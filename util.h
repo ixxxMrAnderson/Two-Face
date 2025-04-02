@@ -10,8 +10,9 @@
 #include <openssl/bn.h>
 #include <openssl/rand.h>
 #include <set>
+#include <algorithm>
 
-#define N 500
+#define N 524228
 #define P 50
 #define logM 13
 #define M (1ULL << logM)

@@ -14,10 +14,10 @@ int main(int argc, char* argv[]) {
         ios_sac = new NetIO("127.0.0.1", 39845);
     } else if (party_name == "Sb") {
         ios_ss = new NetIO("127.0.0.1", 39844);
-        ios_sbc = new NetIO("127.0.0.1", 39846);
+        ios_sbc = new NetIO(nullptr, 39846);
     } else if (party_name == "C") {
         ios_sac = new NetIO(nullptr, 39845);
-        ios_sbc = new NetIO(nullptr, 39846);
+        ios_sbc = new NetIO("127.0.0.1", 39846);
     }
     
 
