@@ -12,7 +12,13 @@ void run_receive(EC_GROUP *group, NetIO *ios, NetIO *sa, NetIO *sb, std::string 
     memcpy(seed_, R->seed_, 16);
     EC_GROUP_get_order(group, ORDER, ctx);
     clock_t start = clock();
-    EC_POINT *A_[N], *B_[N], *gamma[M], *gamma_A[M], *gamma_B[M];
+
+    EC_POINT **A_ = (EC_POINT **)malloc(N * sizeof(EC_POINT *));
+    EC_POINT **B_ = (EC_POINT **)malloc(N * sizeof(EC_POINT *));
+    EC_POINT **gamma = (EC_POINT **)malloc(M * sizeof(EC_POINT *));
+    EC_POINT **gamma_A = (EC_POINT **)malloc(M * sizeof(EC_POINT *));
+    EC_POINT **gamma_B = (EC_POINT **)malloc(M * sizeof(EC_POINT *));
+    // EC_POINT *A_[N], *B_[N], *gamma[M], *gamma_A[M], *gamma_B[M];
     BIGNUM *skxi_a = BN_new(), *skxi_b = BN_new();
     if (party == ALICE) {
         BN_mul(skxi_a, sk_a, xi_a, ctx);
@@ -83,8 +89,15 @@ void run_receive(EC_GROUP *group, NetIO *ios, NetIO *sa, NetIO *sb, std::string 
     printf("Proof time: %.6f seconds\n", prove_time); // 5N+6M ~15s w N=100000
 
 
-    EC_POINT *Ha[N+M], *Hb[N+M], *Ka[N+M], *Kb[N+M];
-    ECaffinecord *EC_recva[N+M], *EC_recvb[N+M];
+    // EC_POINT *Ha[N+M], *Hb[N+M], *Ka[N+M], *Kb[N+M];
+
+    EC_POINT **Ha = (EC_POINT **)malloc((N+M) * sizeof(EC_POINT *));
+    EC_POINT **Hb = (EC_POINT **)malloc((N+M) * sizeof(EC_POINT *));
+    EC_POINT **Ka = (EC_POINT **)malloc((N+M) * sizeof(EC_POINT *));
+    EC_POINT **Kb = (EC_POINT **)malloc((N+M) * sizeof(EC_POINT *));
+    ECaffinecord **EC_recva = (ECaffinecord **)malloc((N+M) * sizeof(ECaffinecord *));
+    ECaffinecord **EC_recvb = (ECaffinecord **)malloc((N+M) * sizeof(ECaffinecord *));
+    // ECaffinecord *EC_recva[N+M], *EC_recvb[N+M];
     for (int i = 0; i < N+M; ++i) {
         Ha[i] = EC_POINT_new(group);
         Hb[i] = EC_POINT_new(group);

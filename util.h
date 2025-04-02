@@ -11,7 +11,7 @@
 #include <openssl/rand.h>
 #include <set>
 
-#define N 50000
+#define N 500
 #define P 50
 #define logM 13
 #define M (1ULL << logM)

@@ -44,7 +44,9 @@ int main(int argc, char* argv[]) {
     } else {
         receive_EC_point(group, pk, ios_sbc);
     }
-    EC_POINT *c1[N], *c2[N];
+
+    EC_POINT **c1 = (EC_POINT **)malloc(N * sizeof(EC_POINT *));
+    EC_POINT **c2 = (EC_POINT **)malloc(N * sizeof(EC_POINT *));
 
     Request *R;
     run_request(group, ios_sac, ios_sbc, party_name, R, sk_a, sk_b, ctx, prg);
@@ -79,7 +81,7 @@ int main(int argc, char* argv[]) {
 }
 
 // Detector total runtime: 400 s
-// Recipient reconstruction time: 
+// Recipient reconstruction time: 0.16s
 // Receipt -> Sender: 65 Bytes
 // Receipt -> Server(s): 1064 Bytes
 // Server <-> Server: 220 MB
