@@ -2,6 +2,7 @@
 #include "run_reconstruct.cpp"
 
 std::string party_name;
+int thread;
 
 int main(int argc, char* argv[]) {
     OpenSSL_add_all_algorithms();

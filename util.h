@@ -11,14 +11,30 @@
 #include <openssl/rand.h>
 #include <set>
 #include <algorithm>
+#include <thread>
 
-#define N 524228
+#define N 524
 #define P 50
 #define logM 13
-#define M (1ULL << logM)
+#define M 10322
 #define k 3
 
 using namespace emp;
+
+void setup_netio(std::string party, NetIO **ss, NetIO **sa, NetIO **sb, int port, int thread) {
+    for (int i = 0; i < thread; ++i) {
+        if (party == "Sa") {
+            ss[i] = new NetIO(nullptr, port + i, true);
+            sa[i] = new NetIO("127.0.0.1", port + thread + i, true);
+        } else if (party == "Sb") {
+            ss[i] = new NetIO("127.0.0.1", port + i, true);
+            sb[i] = new NetIO(nullptr, port + 2*thread + i, true);
+        } else {
+            sa[i] = new NetIO(nullptr, port + thread + i, true);
+            sa[i] = new NetIO("127.0.0.1", port + 2*thread + i, true);
+        }
+    }
+}
 
 void send_bn(BIGNUM *bn, NetIO* ios) {
     unsigned char bytes[32];

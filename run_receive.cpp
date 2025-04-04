@@ -56,6 +56,11 @@ void run_receive(EC_GROUP *group, NetIO *ios, NetIO *sa, NetIO *sb, std::string 
         BN_free(bn);
     }
 
+    clock_t de_ = clock();
+    double de_time = ((double)(de_ - start)) / CLOCKS_PER_SEC;
+    printf("Decrypt time: %.6f seconds\n", de_time); 
+
+
     printf("  S_a ----A_----> S_b \n");
     for (int i = 0; i < N; ++i) {
         if (party == ALICE) send_EC_point(group, A_[i], ios);
@@ -84,8 +89,7 @@ void run_receive(EC_GROUP *group, NetIO *ios, NetIO *sa, NetIO *sb, std::string 
 
 
     clock_t mid_ = clock();
-    double prove_time = ((double)(mid_ - start)) / CLOCKS_PER_SEC;
-    printf("Completed proof with N=%d.\n", N);
+    double prove_time = ((double)(mid_ - de_)) / CLOCKS_PER_SEC;
     printf("Proof time: %.6f seconds\n", prove_time); // 5N+6M ~15s w N=100000
 
 
@@ -220,15 +224,15 @@ void run_receive(EC_GROUP *group, NetIO *ios, NetIO *sa, NetIO *sb, std::string 
         }
         clock_t end_cmp = clock();
         double cmp_time = ((double)(end_cmp - cmp)) / CLOCKS_PER_SEC;
-        // printf("CMP runtime: %.6f seconds\n", cmp_time);
+        printf("CMP runtime: %.6f seconds\n", cmp_time);
         BN_free(omega_a);
         BN_free(omega_b);
     }
 
     clock_t end = clock();
-    double elapsed_time = ((double)(end - start)) / CLOCKS_PER_SEC;
+    double elapsed_time = ((double)(end - mid_)) / CLOCKS_PER_SEC;
     printf("Completed with N=%d.\n", N);
-    printf("Server runtime: %.6f seconds\n", elapsed_time); // 20N+18M ~55s
+    printf("Mask time: %.6f seconds\n", elapsed_time); // 20N+18M ~55s
 
     BN_free(ORDER);
     BN_free(xi_inv_a);
