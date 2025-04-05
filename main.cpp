@@ -2,24 +2,24 @@
 #include "run_reconstruct.cpp"
 
 std::string party_name;
-int thread;
 
 int main(int argc, char* argv[]) {
     OpenSSL_add_all_algorithms();
     EC_GROUP *group = EC_GROUP_new_by_curve_name(NID_X9_62_prime256v1);
 
     party_name = argv[1];
-    NetIO *ios_ss, *ios_sac, *ios_sbc;
-    if (party_name == "Sa") {
-        ios_ss = new NetIO(nullptr, 39844);
-        ios_sac = new NetIO("127.0.0.1", 39845);
-    } else if (party_name == "Sb") {
-        ios_ss = new NetIO("127.0.0.1", 39844);
-        ios_sbc = new NetIO(nullptr, 39846);
-    } else if (party_name == "C") {
-        ios_sac = new NetIO(nullptr, 39845);
-        ios_sbc = new NetIO("127.0.0.1", 39846);
-    }
+    NetIO *ios_ss[thread_num], *ios_sac, *ios_sbc;
+    setup_netio(party_name, ios_ss, ios_sac, ios_sbc, 39844);
+    // if (party_name == "Sa") {
+    //     ios_ss = new NetIO(nullptr, 39844);
+    //     ios_sac = new NetIO("10.0.0.126", 39845);
+    // } else if (party_name == "Sb") {
+    //     ios_ss = new NetIO("10.0.0.126", 39844);
+    //     ios_sbc = new NetIO(nullptr, 39846);
+    // } else if (party_name == "C") {
+    //     ios_sac = new NetIO(nullptr, 39845);
+    //     ios_sbc = new NetIO("10.0.0.126", 39846);
+    // }
     
 
     BIGNUM *sk_a = BN_new(), *sk_b = BN_new();
@@ -72,12 +72,9 @@ int main(int argc, char* argv[]) {
     
     if (party_name == "Sa" or party_name == "Sb") {
         run_receive(group, ios_ss, ios_sac, ios_sbc, party_name, c1, c2, R);
-        printf("Server2server communication: %llu KB\n", ios_ss->counter/1024);
     } else {
         size_t key_size = ios_sac->counter+ios_sbc->counter;
-        printf("Request key size: %llu bytes\n", key_size);
         run_reconstruct(ios_sac, ios_sbc, R->seed_a, R->seed_b);
-        printf("Digest size: %llu bytes\n", ios_sac->counter+ios_sbc->counter-key_size);
     }
 }
 

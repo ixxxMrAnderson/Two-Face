@@ -1,7 +1,7 @@
 #include "BatchPOE.h"
 #include "run_request.cpp"
 
-void run_receive(EC_GROUP *group, NetIO *ios, NetIO *sa, NetIO *sb, std::string party_name, EC_POINT *c1[], EC_POINT *c2[], Request *R) {
+void run_receive(EC_GROUP *group, NetIO **ios, NetIO *sa, NetIO *sb, std::string party_name, EC_POINT *c1[], EC_POINT *c2[], Request *R) {
     int party = ALICE;
     if (party_name == "Sb") party = BOB;
     struct timespec start, finishde, finishbatch, finishp, startcmp, finishcmp;
@@ -58,7 +58,7 @@ void run_receive(EC_GROUP *group, NetIO *ios, NetIO *sa, NetIO *sb, std::string 
     printf("Decryption time: %.6f seconds\n", elapsed); 
 
 
-    printf("  S_a ----A_----> S_b \n");
+    // printf("  S_a ----A_----> S_b \n");
     if (party == ALICE) send_EC_vec(group, A_, N, ios);
     else recv_EC_vec(group, A_, N, ios);
     if (BatchPOE(ios, party, ALICE, group, c1, A_, skxi_a, g_a, g_skxia, N, ctx)) printf("N: S_b aborts.\n");
@@ -67,7 +67,7 @@ void run_receive(EC_GROUP *group, NetIO *ios, NetIO *sa, NetIO *sb, std::string 
     if (BatchPOE(ios, party, ALICE, group, gamma, gamma_A, xi_a, g_a, g_xia, M, ctx)) printf("M: S_b aborts.\n");
 
 
-    printf("  S_b ----B_----> S_a \n");
+    // printf("  S_b ----B_----> S_a \n");
     if (party == ALICE) recv_EC_vec(group, B_, N, ios);
     else send_EC_vec(group, B_, N, ios);
     if (BatchPOE(ios, party, BOB, group, c1, B_, skxi_b, g_b, g_skxib, N, ctx)) printf("N: S_a aborts.\n");
@@ -98,12 +98,12 @@ void run_receive(EC_GROUP *group, NetIO *ios, NetIO *sa, NetIO *sb, std::string 
         EC_recvb[i] = new ECoct();
     }
 
-    printf("  S_b sample omega_b  \n");
-    printf("  S_b ----H_a=pi({A_}^{omega_b}), H_b=pi'(B'^{xi_b})----> S_a  \n");
-    printf("  S_a compare H_a^{1/xi_a} with H_b  \n");
-    printf("  S_a sample omega_a  \n");
-    printf("  S_a ----K_a=pi(A'^{omega_a}), K_b=pi'(B_^{omega_a})----> S_b  \n");
-    printf("  S_b compare K_a with K_b^{1/omega_b}  \n");
+    // printf("  S_b sample omega_b  \n");
+    // printf("  S_b ----H_a=pi({A_}^{omega_b}), H_b=pi'(B'^{xi_b})----> S_a  \n");
+    // printf("  S_a compare H_a^{1/xi_a} with H_b  \n");
+    // printf("  S_a sample omega_a  \n");
+    // printf("  S_a ----K_a=pi(A'^{omega_a}), K_b=pi'(B_^{omega_a})----> S_b  \n");
+    // printf("  S_b compare K_a with K_b^{1/omega_b}  \n");
 
     BIGNUM *xi_inv_a = BN_new(), *xi_inv_b = BN_new();
     BN_mod_inverse(xi_inv_a, xi_a, ORDER, NULL);
@@ -148,30 +148,18 @@ void run_receive(EC_GROUP *group, NetIO *ios, NetIO *sa, NetIO *sb, std::string 
             sigma_ = random_permutation(sigma[0], N+M);
             seed_b = sigma_[0];
         }
-        // printf("sigma:");
-        // for (int i = 0; i < N+M; ++i){
-        //     printf("%d ", sigma[i]);
-        // }
-        // printf("\n");
+        
         clock_gettime(CLOCK_MONOTONIC, &startcmp);
         if (party == ALICE) {
             recv_EC_vec(group, Ka, N+M, ios);
-            __uint128_t *s = (__uint128_t*)malloc(4*(N+M)*sizeof(__uint128_t));
-            ios->recv_data(s, 4*(N+M)*sizeof(__uint128_t ));
-            for (int i = 0; i < N+M; ++i) {
-                memcpy(EC_recvb[i]->s,  &s[4*i], 64);
-            }
+            recv_vec(EC_recvb, N+M, ios);
             send_pEC_vec(group, Ha, N+M, sigma.data(), ios);
             send_pEC_vec(group, Hb, N+M, sigma_.data(), ios);
         } else {
             send_pEC_vec(group, Ka, N+M, sigma.data(), ios);
             send_pEC_vec(group, Kb, N+M, sigma_.data(), ios);
             recv_EC_vec(group, Ha, N+M, ios);
-            __uint128_t *s = (__uint128_t*)malloc(4*(N+M)*sizeof(__uint128_t));
-            ios->recv_data(s, 4*(N+M)*sizeof(__uint128_t ));
-            for (int i = 0; i < N+M; ++i) {
-                memcpy(EC_recvb[i]->s, &s[4*i], 64);
-            }
+            recv_vec(EC_recvb, N+M, ios);
         }
 
         if (party == ALICE) {
@@ -217,6 +205,9 @@ void run_receive(EC_GROUP *group, NetIO *ios, NetIO *sa, NetIO *sb, std::string 
 
     printf("Cmp time: %.6f seconds\n", elapsed); 
     clock_gettime(CLOCK_MONOTONIC, &finishcmp);
+    elapsed = finishcmp.tv_sec - finishbatch.tv_sec - elapsed;
+    elapsed += (finishcmp.tv_nsec - finishbatch.tv_nsec) / 1000000000.0;
+    printf("Permute time: %.6f seconds\n", elapsed); 
     elapsed = (finishcmp.tv_sec - start.tv_sec);
     elapsed += (finishcmp.tv_nsec - start.tv_nsec) / 1000000000.0;
     printf("Total time: %.6f seconds\n", elapsed); 

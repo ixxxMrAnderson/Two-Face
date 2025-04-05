@@ -1,7 +1,7 @@
 #include "util.h"
 // #include <fstream>
 
-int BatchPOE(NetIO* ios, int party, int prover, EC_GROUP *group, EC_POINT *A[], EC_POINT *B[], BIGNUM *x, EC_POINT *g_, EC_POINT *g_x, int length, BN_CTX *ctx) {
+int BatchPOE(NetIO** ios, int party, int prover, EC_GROUP *group, EC_POINT *A[], EC_POINT *B[], BIGNUM *x, EC_POINT *g_, EC_POINT *g_x, int length, BN_CTX *ctx) {
     unsigned char seed_bytes[16];
     BIGNUM *ORDER = BN_new();
     EC_GROUP_get_order(group, ORDER, ctx);
@@ -11,19 +11,19 @@ int BatchPOE(NetIO* ios, int party, int prover, EC_GROUP *group, EC_POINT *A[], 
     EC_POINT *B_ = EC_POINT_new(group); 
 
     if (party == prover) {
-        receive_EC_point(group, A_, ios);
+        receive_EC_point(group, A_, ios[0]);
         EC_POINT_mul(group, B_, NULL, A_, x, ctx);
-        send_EC_point(group, B_, ios);
-        ios->recv_data(seed_bytes, sizeof(seed_bytes));
-        ios->flush();
+        send_EC_point(group, B_, ios[0]);
+        ios[0]->recv_data(seed_bytes, sizeof(seed_bytes));
+        ios[0]->flush();
     } else {
         BIGNUM *ra = BN_new();
         BN_rand(ra, 256, -1, 0);
         EC_POINT_mul(group, A_, ra, NULL, NULL, ctx);
-        send_EC_point(group, A_, ios);
-        receive_EC_point(group, B_, ios);
+        send_EC_point(group, A_, ios[0]);
+        receive_EC_point(group, B_, ios[0]);
         RAND_bytes(seed_bytes, 16);
-        ios->send_data(seed_bytes, sizeof(seed_bytes));
+        ios[0]->send_data(seed_bytes, sizeof(seed_bytes));
         BN_free(ra);
     }
     PRG *prg = new PRG(seed_bytes);
@@ -72,19 +72,19 @@ int BatchPOE(NetIO* ios, int party, int prover, EC_GROUP *group, EC_POINT *A[], 
         BIGNUM *k_ = BN_new();
         BN_rand(k_, 256, -1, 0);  
         EC_POINT_mul(group, t, NULL, sum_A, k_, ctx);
-        send_EC_point(group, t, ios);
-        receive_bn(e, ios);
+        send_EC_point(group, t, ios[0]);
+        receive_bn(e, ios[0]);
         BN_mul(z, e, x, ctx);
         BN_add(z, k_, z);
         BN_mod(z, z, ORDER, ctx);
-        send_bn(z, ios);
+        send_bn(z, ios[0]);
 
         BN_free(k_);
     } else {
-        receive_EC_point(group, t, ios);
+        receive_EC_point(group, t, ios[0]);
         BN_rand(e, 256, -1, 0);
-        send_bn(e, ios);
-        receive_bn(z, ios);
+        send_bn(e, ios[0]);
+        receive_bn(z, ios[0]);
     }
 
 
