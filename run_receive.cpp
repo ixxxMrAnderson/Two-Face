@@ -166,33 +166,26 @@ void run_receive(EC_GROUP *group, NetIO *ios, NetIO *sa, NetIO *sb, std::string 
                 receive_EC_point(group, Ka[i], ios);
                 receive_bn(EC_recvb[i]->x, ios);
                 receive_bn(EC_recvb[i]->y, ios);
-                EC_set.insert(EC_recvb[i]);
+                send_EC_point(group, Ha[sigma[i]], ios);
+                send_EC_point(group, Hb[sigma_[i]], ios);
             } else {
                 send_EC_point(group, Ka[sigma[i]], ios);
                 send_EC_point(group, Kb[sigma_[i]], ios);
+                receive_EC_point(group, Ha[i], ios);
+                receive_bn(EC_recvb[i]->x, ios);
+                receive_bn(EC_recvb[i]->y, ios);
             }
         }
         if (party == ALICE) {
             ECmul_single(std::ref(group), Ka, Ka, std::ref(xi_inv_a), N+M, thread_num);
             for (int i = 0; i < N+M; ++i) {
+                EC_set.insert(EC_recvb[i]);
                 EC_POINT_get_affine_coordinates(group, Ka[i], EC_recva[i]->x, EC_recva[i]->y, ctx);
             }
-        }
-        // printf("\n");
-        for (int i = 0; i < N+M; ++i) {
-            if (party == ALICE) {
-                send_EC_point(group, Ha[sigma[i]], ios);
-                send_EC_point(group, Hb[sigma_[i]], ios);
-            } else {
-                receive_EC_point(group, Ha[i], ios);
-                receive_bn(EC_recvb[i]->x, ios);
-                receive_bn(EC_recvb[i]->y, ios);
-                EC_set.insert(EC_recvb[i]);
-            }
-        }
-        if (party == BOB) {
+        } else {
             ECmul_single(std::ref(group), Ha, Ha, std::ref(xi_inv_b), N+M, thread_num);
             for (int i = 0; i < N+M; ++i) {
+                EC_set.insert(EC_recvb[i]);
                 EC_POINT_get_affine_coordinates(group, Ha[i], EC_recva[i]->x, EC_recva[i]->y, ctx);
             }
         }
