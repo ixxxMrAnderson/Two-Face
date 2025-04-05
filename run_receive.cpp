@@ -18,7 +18,7 @@ void run_receive(EC_GROUP *group, NetIO *ios, NetIO *sa, NetIO *sb, std::string 
     EC_POINT **gamma = (EC_POINT **)malloc(M * sizeof(EC_POINT *));
     EC_POINT **gamma_A = (EC_POINT **)malloc(M * sizeof(EC_POINT *));
     EC_POINT **gamma_B = (EC_POINT **)malloc(M * sizeof(EC_POINT *));
-    // EC_POINT *A_[N], *B_[N], *gamma[M], *gamma_A[M], *gamma_B[M];
+    
     BIGNUM *skxi_a = BN_new(), *skxi_b = BN_new();
     if (party == ALICE) {
         BN_mul(skxi_a, sk_a, xi_a, ctx);
@@ -27,12 +27,17 @@ void run_receive(EC_GROUP *group, NetIO *ios, NetIO *sa, NetIO *sb, std::string 
         BN_mul(skxi_b, sk_b, xi_b, ctx);
         BN_mod(skxi_b, skxi_b, ORDER, ctx);
     }
+    struct timespec startt, finish;
+    double elapsed;
+
+    clock_gettime(CLOCK_MONOTONIC, &startt);
     for (int i = 0; i < N; ++i) {
         A_[i] = EC_POINT_new(group);
         B_[i] = EC_POINT_new(group);
-        if (party == ALICE) EC_POINT_mul(group, A_[i], NULL, c1[i], skxi_a, ctx);
-        else EC_POINT_mul(group, B_[i], NULL, c1[i], skxi_b, ctx);
     }
+
+    if (party == ALICE) ECmul_single(std::ref(group), c1, A_, std::ref(skxi_a), N, thread_num);
+    else ECmul_single(std::ref(group), c1, B_, std::ref(skxi_b), N, thread_num);
 
     PRG *prg_ = new PRG(seed_);
     for (int i = 0; i < M; ++i) {
@@ -42,19 +47,11 @@ void run_receive(EC_GROUP *group, NetIO *ios, NetIO *sa, NetIO *sb, std::string 
         BIGNUM *bn = BN_new();
         random_BN(prg_, bn);
         EC_POINT_mul(group, gamma[i], bn, NULL, NULL, ctx);
-        if (party == ALICE) {
-            BIGNUM *tmp = BN_new();
-            BN_mul(tmp, bn, xi_a, ctx);
-            EC_POINT_mul(group, gamma_A[i], tmp, NULL, NULL, ctx);
-            BN_free(tmp);
-        } else {
-            BIGNUM *tmp = BN_new();
-            BN_mul(tmp, bn, xi_b, ctx);
-            EC_POINT_mul(group, gamma_B[i], tmp, NULL, NULL, ctx);
-            BN_free(tmp);
-        }
         BN_free(bn);
     }
+
+    if (party == ALICE) ECmul_single(std::ref(group), gamma, gamma_A, std::ref(xi_a), M, thread_num);
+    else ECmul_single(std::ref(group), gamma, gamma_B, std::ref(xi_b), M, thread_num);
 
     clock_t de_ = clock();
     double de_time = ((double)(de_ - start)) / CLOCKS_PER_SEC;
@@ -86,27 +83,24 @@ void run_receive(EC_GROUP *group, NetIO *ios, NetIO *sa, NetIO *sb, std::string 
     }
     if (BatchPOE(ios, party, BOB, group, gamma, gamma_B, xi_b, g_b, g_xib, M, ctx)) printf("M: S_a aborts.\n");
 
-
-
     clock_t mid_ = clock();
     double prove_time = ((double)(mid_ - de_)) / CLOCKS_PER_SEC;
     printf("Proof time: %.6f seconds\n", prove_time); // 5N+6M ~15s w N=100000
-
-
-    // EC_POINT *Ha[N+M], *Hb[N+M], *Ka[N+M], *Kb[N+M];
 
     EC_POINT **Ha = (EC_POINT **)malloc((N+M) * sizeof(EC_POINT *));
     EC_POINT **Hb = (EC_POINT **)malloc((N+M) * sizeof(EC_POINT *));
     EC_POINT **Ka = (EC_POINT **)malloc((N+M) * sizeof(EC_POINT *));
     EC_POINT **Kb = (EC_POINT **)malloc((N+M) * sizeof(EC_POINT *));
+    EC_POINT **tmp_vec = (EC_POINT **)malloc((N+M) * sizeof(EC_POINT *));
     ECaffinecord **EC_recva = (ECaffinecord **)malloc((N+M) * sizeof(ECaffinecord *));
     ECaffinecord **EC_recvb = (ECaffinecord **)malloc((N+M) * sizeof(ECaffinecord *));
-    // ECaffinecord *EC_recva[N+M], *EC_recvb[N+M];
+    
     for (int i = 0; i < N+M; ++i) {
         Ha[i] = EC_POINT_new(group);
         Hb[i] = EC_POINT_new(group);
         Ka[i] = EC_POINT_new(group);
         Kb[i] = EC_POINT_new(group);
+        tmp_vec[i] = EC_POINT_new(group);
         EC_recva[i] = new ECaffinecord();
         EC_recvb[i] = new ECaffinecord();
         EC_recva[i]->x = BN_new();
@@ -130,38 +124,31 @@ void run_receive(EC_GROUP *group, NetIO *ios, NetIO *sa, NetIO *sb, std::string 
         BIGNUM *omega_a = BN_new(), *omega_b = BN_new();
         if (party == ALICE) BN_rand(omega_a, 256, -1, 0);
         else BN_rand(omega_b, 256, -1, 0);
-        for (int i = 0; i < N+M; ++i) {
-            if (i < N) {
-                if (party == ALICE) {
-                    EC_POINT *tmp = EC_POINT_new(group);
-                    EC_POINT_mul(group, Ha[i], NULL, B_[i], omega_a, ctx);
-                    EC_POINT_mul(group, tmp, NULL, c1[i], sk_a, ctx);
-                    EC_POINT_invert(group, tmp, ctx);
-                    EC_POINT_add(group, Hb[i], c2[i], tmp, ctx);
-                    EC_POINT_mul(group, Hb[i], NULL, Hb[i], omega_a, ctx);
-                    EC_POINT_free(tmp);
-                } else {
-                    EC_POINT *tmp = EC_POINT_new(group);
-                    EC_POINT_mul(group, Ka[i], NULL, A_[i], omega_b, ctx);
-                    EC_POINT_mul(group, tmp, NULL, c1[i], sk_b, ctx);
-                    EC_POINT_invert(group, tmp, ctx);
-                    EC_POINT_add(group, Kb[i], c2[i], tmp, ctx);
-                    EC_POINT_mul(group, Kb[i], NULL, Kb[i], omega_b, ctx);
-                    EC_POINT_free(tmp);
-                }
+
+        if (party == ALICE) {
+            ECmul_single(std::ref(group), B_, Ha, std::ref(omega_a), N, thread_num);
+            ECmul_single(std::ref(group), c1, tmp_vec, std::ref(sk_a), N, thread_num);
+            ECmul_single(std::ref(group), gamma_B, &Ha[N], std::ref(omega_a), M, thread_num);
+            ECmul_single(std::ref(group), gamma, &Hb[N], std::ref(omega_a), M, thread_num);
+        } else {
+            ECmul_single(std::ref(group), A_, Ka, std::ref(omega_b), N, thread_num);
+            ECmul_single(std::ref(group), c1, tmp_vec, std::ref(sk_b), N, thread_num);
+            ECmul_single(std::ref(group), gamma_A, &Ka[N], std::ref(omega_b), M, thread_num);
+            ECmul_single(std::ref(group), gamma, &Kb[N], std::ref(omega_b), M, thread_num);
+        }
+        for (int i = 0; i < N; ++i) {
+            if (party == ALICE) {
+                EC_POINT_invert(group, tmp_vec[i], ctx);
+                EC_POINT_add(group, Hb[i], c2[i], tmp_vec[i], ctx);
             } else {
-                if (party == ALICE) {
-                    EC_POINT *tmp = EC_POINT_new(group);
-                    EC_POINT_mul(group, Ha[i], NULL, gamma_B[i-N], omega_a, ctx);
-                    EC_POINT_mul(group, Hb[i], NULL, gamma[i-N], omega_a, ctx);
-                    EC_POINT_free(tmp);
-                } else {
-                    EC_POINT *tmp = EC_POINT_new(group);
-                    EC_POINT_mul(group, Ka[i], NULL, gamma_A[i-N], omega_b, ctx);
-                    EC_POINT_mul(group, Kb[i], NULL, gamma[i-N], omega_b, ctx);
-                    EC_POINT_free(tmp);
-                }
+                EC_POINT_invert(group, tmp_vec[i], ctx);
+                EC_POINT_add(group, Kb[i], c2[i], tmp_vec[i], ctx);
             }
+        }
+        if (party == ALICE) {
+            ECmul_single(std::ref(group), Hb, Hb, std::ref(omega_a), N, thread_num);
+        } else {
+            ECmul_single(std::ref(group), Kb, Kb, std::ref(omega_b), N, thread_num);
         }
         std::vector<int> sigma, sigma_;
         if (party == ALICE) {
@@ -174,19 +161,21 @@ void run_receive(EC_GROUP *group, NetIO *ios, NetIO *sa, NetIO *sb, std::string 
             seed_b = sigma_[0];
         }
         seed_b = sigma_[0];
-        // printf("sigma:");
         for (int i = 0; i < N+M; ++i) {
-            // printf("%d ",sigma[i]);
             if (party == ALICE) {
                 receive_EC_point(group, Ka[i], ios);
                 receive_bn(EC_recvb[i]->x, ios);
                 receive_bn(EC_recvb[i]->y, ios);
                 EC_set.insert(EC_recvb[i]);
-                EC_POINT_mul(group, Ka[i], NULL, Ka[i], xi_inv_a, ctx);
-                EC_POINT_get_affine_coordinates(group, Ka[i], EC_recva[i]->x, EC_recva[i]->y, ctx);
             } else {
                 send_EC_point(group, Ka[sigma[i]], ios);
                 send_EC_point(group, Kb[sigma_[i]], ios);
+            }
+        }
+        if (party == ALICE) {
+            ECmul_single(std::ref(group), Ka, Ka, std::ref(xi_inv_a), N+M, thread_num);
+            for (int i = 0; i < N+M; ++i) {
+                EC_POINT_get_affine_coordinates(group, Ka[i], EC_recva[i]->x, EC_recva[i]->y, ctx);
             }
         }
         // printf("\n");
@@ -199,7 +188,11 @@ void run_receive(EC_GROUP *group, NetIO *ios, NetIO *sa, NetIO *sb, std::string 
                 receive_bn(EC_recvb[i]->x, ios);
                 receive_bn(EC_recvb[i]->y, ios);
                 EC_set.insert(EC_recvb[i]);
-                EC_POINT_mul(group, Ha[i], NULL, Ha[i], xi_inv_b, ctx);
+            }
+        }
+        if (party == BOB) {
+            ECmul_single(std::ref(group), Ha, Ha, std::ref(xi_inv_b), N+M, thread_num);
+            for (int i = 0; i < N+M; ++i) {
                 EC_POINT_get_affine_coordinates(group, Ha[i], EC_recva[i]->x, EC_recva[i]->y, ctx);
             }
         }
@@ -233,6 +226,12 @@ void run_receive(EC_GROUP *group, NetIO *ios, NetIO *sa, NetIO *sb, std::string 
     double elapsed_time = ((double)(end - mid_)) / CLOCKS_PER_SEC;
     printf("Completed with N=%d.\n", N);
     printf("Mask time: %.6f seconds\n", elapsed_time); // 20N+18M ~55s
+
+    clock_gettime(CLOCK_MONOTONIC, &finish);
+
+    elapsed = (finish.tv_sec - startt.tv_sec);
+    elapsed += (finish.tv_nsec - startt.tv_nsec) / 1000000000.0;
+    printf("Total time: %.6f seconds\n", elapsed); 
 
     BN_free(ORDER);
     BN_free(xi_inv_a);

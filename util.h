@@ -13,25 +13,61 @@
 #include <algorithm>
 #include <thread>
 
-#define N 524
+#define N 524288
 #define P 50
 #define logM 13
 #define M 10322
 #define k 3
+int thread_num = 4;
 
 using namespace emp;
+
+
+void ECmul(const EC_GROUP* group, EC_POINT* A[], EC_POINT* B[], const BIGNUM* x, size_t length, int thread_id, int num_threads) {
+    BN_CTX* ctx = BN_CTX_new();
+    for (size_t i = 0; i < length; ++i) {
+        if (i % num_threads != thread_id) continue;
+        EC_POINT_mul(group, B[i], nullptr, A[i], x, ctx);
+    }
+    BN_CTX_free(ctx);
+}
+
+void ECmul_(const EC_GROUP* group, EC_POINT* A[], EC_POINT* B[], BIGNUM* x[], size_t length, int thread_id, int num_threads) {
+    BN_CTX* ctx = BN_CTX_new();
+    for (size_t i = 0; i < length; ++i) {
+        if (i % num_threads != thread_id) continue;
+        EC_POINT_mul(group, B[i], nullptr, A[i], x[i], ctx);
+    }
+    BN_CTX_free(ctx);
+}
+
+void ECmul_single(const EC_GROUP* group, EC_POINT* A[], EC_POINT* B[], const BIGNUM* x, size_t length, int num_threads) {
+    std::vector<std::thread> threads;
+    for (int t = 0; t < num_threads; ++t) {
+        threads.emplace_back(ECmul, group, A, B, x, length, t, num_threads);
+    }
+    for (auto& th : threads) th.join();
+}
+
+void ECmul_vector(const EC_GROUP* group, EC_POINT* A[], EC_POINT* B[], BIGNUM* x[], size_t length, int num_threads) {
+    std::vector<std::thread> threads;
+    for (int t = 0; t < num_threads; ++t) {
+        threads.emplace_back(ECmul_, group, A, B, x, length, t, num_threads);
+    }
+    for (auto& th : threads) th.join();
+}
 
 void setup_netio(std::string party, NetIO **ss, NetIO **sa, NetIO **sb, int port, int thread) {
     for (int i = 0; i < thread; ++i) {
         if (party == "Sa") {
             ss[i] = new NetIO(nullptr, port + i, true);
-            sa[i] = new NetIO("127.0.0.1", port + thread + i, true);
+            sa[i] = new NetIO("10.0.0.126", port + thread + i, true);
         } else if (party == "Sb") {
-            ss[i] = new NetIO("127.0.0.1", port + i, true);
+            ss[i] = new NetIO("10.0.0.126", port + i, true);
             sb[i] = new NetIO(nullptr, port + 2*thread + i, true);
         } else {
             sa[i] = new NetIO(nullptr, port + thread + i, true);
-            sa[i] = new NetIO("127.0.0.1", port + 2*thread + i, true);
+            sa[i] = new NetIO("10.0.0.126", port + 2*thread + i, true);
         }
     }
 }

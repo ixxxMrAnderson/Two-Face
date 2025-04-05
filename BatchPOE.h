@@ -26,38 +26,43 @@ int BatchPOE(NetIO* ios, int party, int prover, EC_GROUP *group, EC_POINT *A[], 
         ios->send_data(seed_bytes, sizeof(seed_bytes));
         BN_free(ra);
     }
-
     PRG *prg = new PRG(seed_bytes);
-
+    EC_POINT **tmp_veca = (EC_POINT **)malloc(length * sizeof(EC_POINT *));
+    EC_POINT **tmp_vecb = (EC_POINT **)malloc(length * sizeof(EC_POINT *));
+    BIGNUM **q = (BIGNUM **)malloc((length+2) * sizeof(BIGNUM *));
     for (int i = 0; i < length+2; i++) {
         unsigned char q_[32];
         prg->random_data(q_, sizeof(q_));
-        BIGNUM* q = BN_bin2bn(q_, sizeof(q_), NULL);
-        if (i == 0) {
-            EC_POINT_mul(group, sum_A, NULL, A[i], q, ctx);
-            EC_POINT_mul(group, sum_B, NULL, B[i], q, ctx);
-        } else {
-            EC_POINT *tmp_A = EC_POINT_new(group); 
-            EC_POINT *tmp_B = EC_POINT_new(group); 
-            if (i < length) {
-                EC_POINT_mul(group, tmp_A, NULL, A[i], q, ctx);
-                EC_POINT_mul(group, tmp_B, NULL, B[i], q, ctx);
-            } else if (i == length) {
-                EC_POINT_mul(group, tmp_A, NULL, A_, q, ctx);
-                EC_POINT_mul(group, tmp_B, NULL, B_, q, ctx);
-            } else {
-                EC_POINT_mul(group, tmp_A, NULL, g_, q, ctx);
-                EC_POINT_mul(group, tmp_B, NULL, g_x, q, ctx);
-            }
+        q[i] = BN_bin2bn(q_, sizeof(q_), NULL);
+        if (i < length) {
+            tmp_veca[i] = EC_POINT_new(group);
+            tmp_vecb[i] = EC_POINT_new(group);
+        }
+    }
+    ECmul_vector(group, A, tmp_veca, q, length, thread_num);
+    ECmul_vector(group, B, tmp_vecb, q, length, thread_num);
+    for (int i = 0; i < length+2; i++) {
+        if (i < length) {
+            EC_POINT_add(group, sum_A, sum_A, tmp_veca[i], ctx);
+            EC_POINT_add(group, sum_B, sum_B, tmp_vecb[i], ctx);
+        } else if (i == length) {
+            EC_POINT *tmp_A = EC_POINT_new(group), *tmp_B = EC_POINT_new(group);
+            EC_POINT_mul(group, tmp_A, NULL, A_, q[i], ctx);
+            EC_POINT_mul(group, tmp_B, NULL, B_, q[i], ctx);
             EC_POINT_add(group, sum_A, sum_A, tmp_A, ctx);
             EC_POINT_add(group, sum_B, sum_B, tmp_B, ctx);
-            
             EC_POINT_free(tmp_A);
             EC_POINT_free(tmp_B);
-        } 
-        BN_free(q);
+        } else {
+            EC_POINT *tmp_A = EC_POINT_new(group), *tmp_B = EC_POINT_new(group);
+            EC_POINT_mul(group, tmp_A, NULL, g_, q[i], ctx);
+            EC_POINT_mul(group, tmp_B, NULL, g_x, q[i], ctx);
+            EC_POINT_add(group, sum_A, sum_A, tmp_A, ctx);
+            EC_POINT_add(group, sum_B, sum_B, tmp_B, ctx);
+            EC_POINT_free(tmp_A);
+            EC_POINT_free(tmp_B);
+        }
     }
-
 
     EC_POINT *t = EC_POINT_new(group); 
     BIGNUM *e = BN_new(), *z = BN_new();
