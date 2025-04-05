@@ -18,7 +18,7 @@
 #define logM 13
 #define M 10322
 #define k 3
-int thread_num = 4;
+int thread_num = 1;
 
 using namespace emp;
 
@@ -41,6 +41,15 @@ void ECmul_(const EC_GROUP* group, EC_POINT* A[], EC_POINT* B[], BIGNUM* x[], si
     BN_CTX_free(ctx);
 }
 
+void ECadd_(const EC_GROUP* group, EC_POINT* A[], EC_POINT* B, size_t length, int thread_id, int num_threads) {
+    BN_CTX* ctx = BN_CTX_new();
+    for (size_t i = 0; i < length; ++i) {
+        if (i % num_threads != thread_id) continue;
+        EC_POINT_add(group, B, B, A[i], ctx);
+    }
+    BN_CTX_free(ctx);
+}
+
 void ECmul_single(const EC_GROUP* group, EC_POINT* A[], EC_POINT* B[], const BIGNUM* x, size_t length, int num_threads) {
     std::vector<std::thread> threads;
     for (int t = 0; t < num_threads; ++t) {
@@ -53,6 +62,14 @@ void ECmul_vector(const EC_GROUP* group, EC_POINT* A[], EC_POINT* B[], BIGNUM* x
     std::vector<std::thread> threads;
     for (int t = 0; t < num_threads; ++t) {
         threads.emplace_back(ECmul_, group, A, B, x, length, t, num_threads);
+    }
+    for (auto& th : threads) th.join();
+}
+
+void ECadd_vector(const EC_GROUP* group, EC_POINT* A[], EC_POINT* B, size_t length, int num_threads) {
+    std::vector<std::thread> threads;
+    for (int t = 0; t < num_threads; ++t) {
+        threads.emplace_back(ECadd_, group, A, B, length, t, num_threads);
     }
     for (auto& th : threads) th.join();
 }
@@ -131,6 +148,44 @@ void send_EC_point(EC_GROUP *group, EC_POINT *point, NetIO *ios) {
     BN_free(y);
 }
 
+void send_pEC_vec(EC_GROUP *group, EC_POINT *point[], int len, int *sigma, NetIO *ios) {
+    __uint128_t *s = (__uint128_t*)malloc(4*len*sizeof(__uint128_t));
+    BN_CTX *ctx = BN_CTX_new();
+    for (int i = 0; i < len; ++i) {
+        unsigned char buf[65];
+        EC_POINT_point2oct(group, point[sigma[i]], POINT_CONVERSION_UNCOMPRESSED, buf, 65, ctx);
+        memcpy(&s[4*i], buf + 1, 64); 
+    }
+    ios->send_data(s, 4*len*sizeof(__uint128_t ));
+    ios->flush();
+}
+void send_EC_vec(EC_GROUP *group, EC_POINT *point[], int len, NetIO *ios) {
+    __uint128_t *s = (__uint128_t*)malloc(4*len*sizeof(__uint128_t));
+    BN_CTX *ctx = BN_CTX_new();
+    for (int i = 0; i < len; ++i) {
+        unsigned char buf[65];
+        EC_POINT_point2oct(group, point[i], POINT_CONVERSION_UNCOMPRESSED, buf, 65, ctx);
+        memcpy(&s[4*i], buf + 1, 64); 
+    }
+    ios->send_data(s, 4*len*sizeof(__uint128_t ));
+    ios->flush();
+}
+
+void recv_EC_vec(EC_GROUP *group, EC_POINT *point[], int len, NetIO *ios) {
+    __uint128_t *s = (__uint128_t*)malloc(4*len*sizeof(__uint128_t));
+    BN_CTX *ctx = BN_CTX_new();
+    ios->recv_data(s, 4*len*sizeof(__uint128_t ));
+    for (int i = 0; i < len; ++i) {
+        unsigned char buf[65];
+        buf[0] = 0x04;
+        memcpy(buf + 1,  &s[4*i], 16);
+        memcpy(buf + 17, &s[4*i+1], 16);
+        memcpy(buf + 33, &s[4*i+2], 16);
+        memcpy(buf + 49, &s[4*i+3], 16);
+        EC_POINT_oct2point(group, point[i], buf, 65, ctx);
+    }
+}
+
 void print_BN(BIGNUM *bn) {
     BIO *bio = BIO_new(BIO_s_mem());
     BN_print(bio, bn);
@@ -150,14 +205,16 @@ std::vector<int> random_permutation(size_t seed, int size) {
     return permutation;
 }
 
-struct ECaffinecord {
-    BIGNUM *x, *y;
-    ECaffinecord(BIGNUM *x=NULL, BIGNUM *y=NULL): x(x), y(y) {}
+struct ECoct {
+    __uint128_t *s;
+    ECoct() {
+        s = (__uint128_t*)malloc(4*sizeof(__uint128_t));
+    }
 };
 
 struct ECPointComparator {
-    bool operator()(const ECaffinecord* p1, const ECaffinecord* p2) const {
-        return (BN_cmp(p1->x, p2->x) < 0) || ((BN_cmp(p1->x, p2->x) == 0) && (BN_cmp(p1->y, p2->y) < 0));
+    bool operator()(const ECoct* p1, const ECoct* p2) const {
+        return (p1->s[0]<p2->s[0])||((p1->s[0]==p2->s[0])&&(p1->s[1]<p2->s[1]));
     }
 };
 

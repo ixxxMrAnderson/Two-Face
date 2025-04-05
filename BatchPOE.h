@@ -41,6 +41,8 @@ int BatchPOE(NetIO* ios, int party, int prover, EC_GROUP *group, EC_POINT *A[], 
     }
     ECmul_vector(group, A, tmp_veca, q, length, thread_num);
     ECmul_vector(group, B, tmp_vecb, q, length, thread_num);
+    // ECadd_vector(group, tmp_veca, sum_A, length, thread_num);
+    // ECadd_vector(group, tmp_vecb, sum_B, length, thread_num);
     for (int i = 0; i < length+2; i++) {
         if (i < length) {
             EC_POINT_add(group, sum_A, sum_A, tmp_veca[i], ctx);
