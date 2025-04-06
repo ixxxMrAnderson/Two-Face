@@ -4,8 +4,8 @@
 void run_receive(EC_GROUP *group, NetIO **ios, NetIO *sa, NetIO *sb, std::string party_name, EC_POINT *c1[], EC_POINT *c2[], Request *R) {
     int party = ALICE;
     if (party_name == "Sb") party = BOB;
-    struct timespec start, finishde, finishbatch, finishp, startcmp, finishcmp;
-    double elapsed;
+    struct timespec startec_mul, endec_mul, startt, endt, startcmp, endcmp, start, end;
+    double eec, et, ecmp;
     clock_gettime(CLOCK_MONOTONIC, &start);
     BIGNUM *sk_a = R->sk_a, *sk_b = R->sk_b, *xi_a = R->xi_a, *xi_b = R->xi_b, *ORDER = BN_new();
     BN_CTX *ctx = R->ctx;
@@ -35,6 +35,7 @@ void run_receive(EC_GROUP *group, NetIO **ios, NetIO *sa, NetIO *sb, std::string
         B_[i] = EC_POINT_new(group);
     }
 
+    clock_gettime(CLOCK_MONOTONIC, &startec_mul);
     if (party == ALICE) ECmul_single(std::ref(group), c1, A_, std::ref(skxi_a), N, thread_num);
     else ECmul_single(std::ref(group), c1, B_, std::ref(skxi_b), N, thread_num);
 
@@ -49,23 +50,39 @@ void run_receive(EC_GROUP *group, NetIO **ios, NetIO *sa, NetIO *sb, std::string
         BN_free(bn);
     }
 
+
     if (party == ALICE) ECmul_single(std::ref(group), gamma, gamma_A, std::ref(xi_a), M, thread_num);
     else ECmul_single(std::ref(group), gamma, gamma_B, std::ref(xi_b), M, thread_num);
-    
-    clock_gettime(CLOCK_MONOTONIC, &finishde);
-    elapsed = (finishde.tv_sec - start.tv_sec);
-    elapsed += (finishde.tv_nsec - start.tv_nsec) / 1000000000.0;
-    printf("Decryption time: %.6f seconds\n", elapsed); 
+    clock_gettime(CLOCK_MONOTONIC, &endec_mul);
+    eec = endec_mul.tv_sec - startec_mul.tv_sec;
+    eec += (endec_mul.tv_nsec - startec_mul.tv_nsec)/1000000000.0;
 
 
     // printf("  S_a ----A_----> S_b \n");
+    clock_gettime(CLOCK_MONOTONIC, &startt);
     if (party == ALICE) send_EC_vec(group, A_, N, ios);
     else recv_EC_vec(group, A_, N, ios);
+    clock_gettime(CLOCK_MONOTONIC, &endt);
+    et = (endt.tv_sec - startt.tv_sec)*2;
+    et += (endt.tv_nsec - startt.tv_nsec)*2/1000000000.0;
+    clock_gettime(CLOCK_MONOTONIC, &startec_mul);
     if (BatchPOE(ios, party, ALICE, group, c1, A_, skxi_a, g_a, g_skxia, N, ctx)) printf("N: S_b aborts.\n");
+    clock_gettime(CLOCK_MONOTONIC, &endec_mul);
+    eec += (endec_mul.tv_sec - startec_mul.tv_sec)*2;
+    eec += (endec_mul.tv_nsec - startec_mul.tv_nsec)/1000000000.0;
+    
+    
+    clock_gettime(CLOCK_MONOTONIC, &startt);
     if (party == ALICE) send_EC_vec(group, gamma_A, M, ios);
     else recv_EC_vec(group, gamma_A, M, ios);
+    clock_gettime(CLOCK_MONOTONIC, &endt);
+    et += (endt.tv_sec - startt.tv_sec)*2;
+    et += (endt.tv_nsec - startt.tv_nsec)*2/1000000000.0;
+    clock_gettime(CLOCK_MONOTONIC, &startec_mul);
     if (BatchPOE(ios, party, ALICE, group, gamma, gamma_A, xi_a, g_a, g_xia, M, ctx)) printf("M: S_b aborts.\n");
-
+    clock_gettime(CLOCK_MONOTONIC, &endec_mul);
+    eec += (endec_mul.tv_sec - startec_mul.tv_sec)*2;
+    eec += (endec_mul.tv_nsec - startec_mul.tv_nsec)/1000000000.0;
 
     // printf("  S_b ----B_----> S_a \n");
     if (party == ALICE) recv_EC_vec(group, B_, N, ios);
@@ -74,11 +91,6 @@ void run_receive(EC_GROUP *group, NetIO **ios, NetIO *sa, NetIO *sb, std::string
     if (party == ALICE) recv_EC_vec(group, gamma_B, M, ios);
     else send_EC_vec(group, gamma_B, M, ios);
     if (BatchPOE(ios, party, BOB, group, gamma, gamma_B, xi_b, g_b, g_xib, M, ctx)) printf("M: S_a aborts.\n");
-
-    clock_gettime(CLOCK_MONOTONIC, &finishbatch);
-    elapsed = (finishbatch.tv_sec - finishde.tv_sec);
-    elapsed += (finishbatch.tv_nsec - finishde.tv_nsec) / 1000000000.0;
-    printf("BatchPOE time: %.6f seconds\n", elapsed); 
 
     EC_POINT **Ha = (EC_POINT **)malloc((N+M) * sizeof(EC_POINT *));
     EC_POINT **Hb = (EC_POINT **)malloc((N+M) * sizeof(EC_POINT *));
@@ -108,13 +120,14 @@ void run_receive(EC_GROUP *group, NetIO **ios, NetIO *sa, NetIO *sb, std::string
     BIGNUM *xi_inv_a = BN_new(), *xi_inv_b = BN_new();
     BN_mod_inverse(xi_inv_a, xi_a, ORDER, NULL);
     BN_mod_inverse(xi_inv_b, xi_b, ORDER, NULL);
-    elapsed = 0;
+    ecmp = 0;
     for (int j = 0; j < k; ++j){
         std::set<ECoct*, ECPointComparator> EC_set;
         BIGNUM *omega_a = BN_new(), *omega_b = BN_new();
         if (party == ALICE) BN_rand(omega_a, 256, -1, 0);
         else BN_rand(omega_b, 256, -1, 0);
 
+        clock_gettime(CLOCK_MONOTONIC, &startec_mul);
         if (party == ALICE) {
             ECmul_single(std::ref(group), B_, Ha, std::ref(omega_a), N, thread_num);
             ECmul_single(std::ref(group), c1, tmp_vec, std::ref(sk_a), N, thread_num);
@@ -148,8 +161,10 @@ void run_receive(EC_GROUP *group, NetIO **ios, NetIO *sa, NetIO *sb, std::string
             sigma_ = random_permutation(sigma[0], N+M);
             seed_b = sigma_[0];
         }
-        
-        clock_gettime(CLOCK_MONOTONIC, &startcmp);
+        clock_gettime(CLOCK_MONOTONIC, &endec_mul);
+        eec += (endec_mul.tv_sec - startec_mul.tv_sec);
+        eec += (endec_mul.tv_nsec - startec_mul.tv_nsec)/1000000000.0;
+        clock_gettime(CLOCK_MONOTONIC, &startt);
         if (party == ALICE) {
             recv_EC_vec(group, Ka, N+M, ios);
             recv_vec(EC_recvb, N+M, ios);
@@ -161,25 +176,27 @@ void run_receive(EC_GROUP *group, NetIO **ios, NetIO *sa, NetIO *sb, std::string
             recv_EC_vec(group, Ha, N+M, ios);
             recv_vec(EC_recvb, N+M, ios);
         }
+        clock_gettime(CLOCK_MONOTONIC, &endt);
+        et += (endt.tv_sec - startt.tv_sec);
+        et += (endt.tv_nsec - startt.tv_nsec)/1000000000.0;
 
+        clock_gettime(CLOCK_MONOTONIC, &startec_mul);
         if (party == ALICE) {
             ECmul_single(std::ref(group), Ka, Ka, std::ref(xi_inv_a), N+M, thread_num);
+        } else {
+            ECmul_single(std::ref(group), Ha, Ha, std::ref(xi_inv_b), N+M, thread_num);
+        }
+        clock_gettime(CLOCK_MONOTONIC, &endec_mul);
+        eec += (endec_mul.tv_sec - startec_mul.tv_sec);
+        eec += (endec_mul.tv_nsec - startec_mul.tv_nsec)/1000000000.0;
+        clock_gettime(CLOCK_MONOTONIC, &startcmp);
+        if (party == ALICE) {
             for (int i = 0; i < N+M; ++i) {
                 EC_set.insert(EC_recvb[i]);
                 unsigned char buf[65];
                 EC_POINT_point2oct(group, Ka[i], POINT_CONVERSION_UNCOMPRESSED, buf, 65, ctx);
                 memcpy(EC_recva[i]->s, buf + 1, 64); 
             }
-        } else {
-            ECmul_single(std::ref(group), Ha, Ha, std::ref(xi_inv_b), N+M, thread_num);
-            for (int i = 0; i < N+M; ++i) {
-                EC_set.insert(EC_recvb[i]);
-                unsigned char buf[65];
-                EC_POINT_point2oct(group, Ha[i], POINT_CONVERSION_UNCOMPRESSED, buf, 65, ctx);
-                memcpy(EC_recva[i]->s, buf + 1, 64); 
-            }
-        }
-        if (party == ALICE) {
             for (int i = 0; i < N+M; ++i) {
                 if (EC_set.find(EC_recva[i]) != EC_set.end()) {
                     sa->send_data(&i, sizeof(i));
@@ -188,29 +205,32 @@ void run_receive(EC_GROUP *group, NetIO **ios, NetIO *sa, NetIO *sb, std::string
             }
         } else {
             for (int i = 0; i < N+M; ++i) {
+                EC_set.insert(EC_recvb[i]);
+                unsigned char buf[65];
+                EC_POINT_point2oct(group, Ha[i], POINT_CONVERSION_UNCOMPRESSED, buf, 65, ctx);
+                memcpy(EC_recva[i]->s, buf + 1, 64); 
+            }
+            for (int i = 0; i < N+M; ++i) {
                 if (EC_set.find(EC_recva[i]) != EC_set.end()) {
                     sb->send_data(&i, sizeof(i));
                     sb->flush();
                 }
             }
         }
-        clock_gettime(CLOCK_MONOTONIC, &finishcmp);
-
-        elapsed += (finishcmp.tv_sec - startcmp.tv_sec);
-        elapsed += (finishcmp.tv_nsec - startcmp.tv_nsec) / 1000000000.0;
+        clock_gettime(CLOCK_MONOTONIC, &endcmp);
+        ecmp += (endcmp.tv_sec - startcmp.tv_sec);
+        ecmp += (endcmp.tv_nsec - startcmp.tv_nsec)/1000000000.0;
         BN_free(omega_a);
         BN_free(omega_b);
     }
 
-
-    printf("Cmp time: %.6f seconds\n", elapsed); 
-    clock_gettime(CLOCK_MONOTONIC, &finishcmp);
-    elapsed = finishcmp.tv_sec - finishbatch.tv_sec - elapsed;
-    elapsed += (finishcmp.tv_nsec - finishbatch.tv_nsec) / 1000000000.0;
-    printf("Permute time: %.6f seconds\n", elapsed); 
-    elapsed = (finishcmp.tv_sec - start.tv_sec);
-    elapsed += (finishcmp.tv_nsec - start.tv_nsec) / 1000000000.0;
-    printf("Total time: %.6f seconds\n", elapsed); 
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    double elapsed = (end.tv_sec - start.tv_sec);
+    elapsed += (end.tv_nsec - start.tv_nsec) / 1000000000.0;
+    printf("ECmul time: %.6f seconds\n", eec); 
+    printf("Trans time: %.6f seconds\n", et); 
+    printf("Cmp time: %.6f seconds\n", ecmp); 
+    printf("Other time: %.6f seconds\n", elapsed-eec-et-ecmp); 
 
     BN_free(ORDER);
     BN_free(xi_inv_a);
