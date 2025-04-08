@@ -90,18 +90,18 @@ void ECadd_vector(const EC_GROUP* group, EC_POINT* A[], EC_POINT* B, size_t leng
 void setup_netio(std::string party, NetIO **ss, NetIO *&sa, NetIO *&sb, int port) {
     // printf("in setup\n");
     if (party == "Sa") {
-        sa = new NetIO("127.0.0.1", port + thread_num, true);
+        sa = new NetIO("172.31.16.60", port + thread_num, true);
     } else if (party == "Sb") {
         sb = new NetIO(nullptr, port + thread_num + 1, true);
     } else {
         sa = new NetIO(nullptr, port + thread_num, true);
-        sb = new NetIO("127.0.0.1", port + thread_num + 1, true);
+        sb = new NetIO("172.31.21.83", port + thread_num + 1, true);
     }
     for (int i = 0; i < thread_num; ++i) {
         if (party == "Sa") {
             ss[i] = new NetIO(nullptr, port + i, true);
         } else if (party == "Sb") {
-            ss[i] = new NetIO("127.0.0.1", port + i, true);
+            ss[i] = new NetIO("172.31.16.60", port + i, true);
         }
     }
     // printf("setup finished\n");
