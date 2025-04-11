@@ -97,6 +97,7 @@ void run_receive(EC_GROUP *group, NetIO **ios, NetIO *sa, NetIO *sb, std::string
     EC_POINT **Ka = (EC_POINT **)malloc((N+M) * sizeof(EC_POINT *));
     EC_POINT **Kb = (EC_POINT **)malloc((N+M) * sizeof(EC_POINT *));
     EC_POINT **tmp_vec = (EC_POINT **)malloc((N+M) * sizeof(EC_POINT *));
+    ECoct **EC_recv = (ECoct **)malloc((N+M) * sizeof(ECoct *));
     
     for (int i = 0; i < N+M; ++i) {
         Ha[i] = EC_POINT_new(group);
@@ -104,6 +105,7 @@ void run_receive(EC_GROUP *group, NetIO **ios, NetIO *sa, NetIO *sb, std::string
         Ka[i] = EC_POINT_new(group);
         Kb[i] = EC_POINT_new(group);
         tmp_vec[i] = EC_POINT_new(group);
+        EC_recv[i] = new ECoct();
     }
 
     BIGNUM *xi_inv_a = BN_new(), *xi_inv_b = BN_new();
@@ -159,18 +161,35 @@ void run_receive(EC_GROUP *group, NetIO **ios, NetIO *sa, NetIO *sb, std::string
         clock_gettime(CLOCK_MONOTONIC, &startt);
         if (party == ALICE) {
             recv_EC_vec(group, Ka, N+M, ios);
-            recv_EC_vec(group, Kb, N+M, ios);
+            recv_vec(EC_recv, N+M, ios);
             send_pEC_vec(group, Ha, N+M, sigma.data(), ios);
             send_pEC_vec(group, Hb, N+M, sigma.data(), ios);
         } else {
             send_pEC_vec(group, Ka, N+M, sigma.data(), ios);
             send_pEC_vec(group, Kb, N+M, sigma.data(), ios);
             recv_EC_vec(group, Ha, N+M, ios);
-            recv_EC_vec(group, Hb, N+M, ios);
+            recv_vec(EC_recv, N+M, ios);
         }
         clock_gettime(CLOCK_MONOTONIC, &endt);
         et += (endt.tv_sec - startt.tv_sec);
         et += (endt.tv_nsec - startt.tv_nsec)/1000000000.0;
+        clock_gettime(CLOCK_MONOTONIC, &startcmp);
+        std::set<ECoct*, ECPointComparator> ECset;
+        for (int i = 0; i < N+M; ++i) {
+            if (ECset.find(EC_recv[i])==ECset.end()) {
+                ECset.insert(EC_recv[i]);
+                unsigned char buf[65];
+                buf[0] = 0x04;
+                memcpy(buf + 1,  &EC_recv[i], 64);
+                if (party == ALICE) EC_POINT_oct2point(group, Kb[i], buf, 65, ctx);
+                else EC_POINT_oct2point(group, Hb[i], buf, 65, ctx);
+            }
+            else printf("Server abort\n");
+        }
+        clock_gettime(CLOCK_MONOTONIC, &endcmp);
+        ecmp += (endcmp.tv_sec - startcmp.tv_sec);
+        ecmp += (endcmp.tv_nsec - startcmp.tv_nsec)/1000000000.0;
+        
 
         clock_gettime(CLOCK_MONOTONIC, &startec_mul);
         if (party == ALICE) {
@@ -181,7 +200,6 @@ void run_receive(EC_GROUP *group, NetIO **ios, NetIO *sa, NetIO *sb, std::string
         clock_gettime(CLOCK_MONOTONIC, &endec_mul);
         eec += (endec_mul.tv_sec - startec_mul.tv_sec);
         eec += (endec_mul.tv_nsec - startec_mul.tv_nsec)/1000000000.0;
-        clock_gettime(CLOCK_MONOTONIC, &startcmp);
         if (party == ALICE) {
             for (int i = 0; i < N+M; ++i) {
                 if (!EC_POINT_cmp(group, Ka[i], Kb[i], ctx)) {
@@ -199,9 +217,6 @@ void run_receive(EC_GROUP *group, NetIO **ios, NetIO *sa, NetIO *sb, std::string
                 }
             }
         }
-        clock_gettime(CLOCK_MONOTONIC, &endcmp);
-        ecmp += (endcmp.tv_sec - startcmp.tv_sec);
-        ecmp += (endcmp.tv_nsec - startcmp.tv_nsec)/1000000000.0;
         BN_free(omega_a);
         BN_free(omega_b);
     }

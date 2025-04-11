@@ -16,10 +16,10 @@
 #define N 524288
 #define P 50
 #define logM 13
-#define M 10320
-#define k 3
-int thread_num = 16;
-std::string sb_ip = "127.0.0.1";
+#define M 1024
+#define k 4
+int thread_num = 1;
+std::string sb_ip = "172.31.16.60";
 
 using namespace emp;
 
