@@ -9,17 +9,7 @@ int main(int argc, char* argv[]) {
 
     party_name = argv[1];
     NetIO *ios_ss[thread_num], *ios_sac, *ios_sbc;
-    setup_netio(party_name, ios_ss, ios_sac, ios_sbc, 39844);
-    // if (party_name == "Sa") {
-    //     ios_ss = new NetIO(nullptr, 39844);
-    //     ios_sac = new NetIO("10.0.0.126", 39845);
-    // } else if (party_name == "Sb") {
-    //     ios_ss = new NetIO("10.0.0.126", 39844);
-    //     ios_sbc = new NetIO(nullptr, 39846);
-    // } else if (party_name == "C") {
-    //     ios_sac = new NetIO(nullptr, 39845);
-    //     ios_sbc = new NetIO("10.0.0.126", 39846);
-    // }
+    setup_netio(party_name, ios_ss, ios_sac, ios_sbc, 8000);
     
 
     BIGNUM *sk_a = BN_new(), *sk_b = BN_new();
@@ -77,10 +67,3 @@ int main(int argc, char* argv[]) {
         run_reconstruct(ios_sac, ios_sbc, R->seed_a, R->seed_b);
     }
 }
-
-// Detector total runtime: 400 s
-// Recipient reconstruction time: 0.16s
-// Receipt -> Sender: 65 Bytes
-// Receipt -> Server(s): 1064 Bytes
-// Server <-> Server: 220 MB
-// Digest size: 

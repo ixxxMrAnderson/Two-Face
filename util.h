@@ -95,16 +95,16 @@ void setup_netio(std::string party, NetIO **ss, NetIO *&sa, NetIO *&sb, int port
         sb = new NetIO(nullptr, port + thread_num + 1, true);
     } else {
         sa = new NetIO(nullptr, port + thread_num, true);
-        sb = new NetIO("172.31.21.83", port + thread_num + 1, true);
+        sb = new NetIO("172.31.16.60", port + thread_num + 1, true);
     }
     for (int i = 0; i < thread_num; ++i) {
         if (party == "Sa") {
-            ss[i] = new NetIO(nullptr, port + i, true);
-        } else if (party == "Sb") {
             ss[i] = new NetIO("172.31.16.60", port + i, true);
+        } else if (party == "Sb") {
+            ss[i] = new NetIO(nullptr, port + i, true);
         }
     }
-    // printf("setup finished\n");
+    printf("setup finished\n");
 }
 
 void send_bn(BIGNUM *bn, NetIO* ios) {
