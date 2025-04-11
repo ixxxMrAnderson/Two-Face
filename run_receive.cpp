@@ -97,8 +97,6 @@ void run_receive(EC_GROUP *group, NetIO **ios, NetIO *sa, NetIO *sb, std::string
     EC_POINT **Ka = (EC_POINT **)malloc((N+M) * sizeof(EC_POINT *));
     EC_POINT **Kb = (EC_POINT **)malloc((N+M) * sizeof(EC_POINT *));
     EC_POINT **tmp_vec = (EC_POINT **)malloc((N+M) * sizeof(EC_POINT *));
-    ECoct **EC_recva = (ECoct **)malloc((N+M) * sizeof(ECoct *));
-    ECoct **EC_recvb = (ECoct **)malloc((N+M) * sizeof(ECoct *));
     
     for (int i = 0; i < N+M; ++i) {
         Ha[i] = EC_POINT_new(group);
@@ -106,23 +104,13 @@ void run_receive(EC_GROUP *group, NetIO **ios, NetIO *sa, NetIO *sb, std::string
         Ka[i] = EC_POINT_new(group);
         Kb[i] = EC_POINT_new(group);
         tmp_vec[i] = EC_POINT_new(group);
-        EC_recva[i] = new ECoct();
-        EC_recvb[i] = new ECoct();
     }
-
-    // printf("  S_b sample omega_b  \n");
-    // printf("  S_b ----H_a=pi({A_}^{omega_b}), H_b=pi'(B'^{xi_b})----> S_a  \n");
-    // printf("  S_a compare H_a^{1/xi_a} with H_b  \n");
-    // printf("  S_a sample omega_a  \n");
-    // printf("  S_a ----K_a=pi(A'^{omega_a}), K_b=pi'(B_^{omega_a})----> S_b  \n");
-    // printf("  S_b compare K_a with K_b^{1/omega_b}  \n");
 
     BIGNUM *xi_inv_a = BN_new(), *xi_inv_b = BN_new();
     BN_mod_inverse(xi_inv_a, xi_a, ORDER, NULL);
     BN_mod_inverse(xi_inv_b, xi_b, ORDER, NULL);
     ecmp = 0;
     for (int j = 0; j < k; ++j){
-        std::set<ECoct*, ECPointComparator> EC_set;
         BIGNUM *omega_a = BN_new(), *omega_b = BN_new();
         if (party == ALICE) BN_rand(omega_a, 256, -1, 0);
         else BN_rand(omega_b, 256, -1, 0);
@@ -149,17 +137,21 @@ void run_receive(EC_GROUP *group, NetIO **ios, NetIO *sa, NetIO *sb, std::string
                 EC_POINT_add(group, Kb[i], c2[i], tmp_vec[i], ctx);
             }
         }
-        std::vector<int> sigma, sigma_;
+        std::vector<int> sigma;
         if (party == ALICE) {
             ECmul_single(std::ref(group), Hb, Hb, std::ref(omega_a), N, thread_num);
             sigma = random_permutation(seed_a, N+M);
-            sigma_ = random_permutation(sigma[0], N+M);
-            seed_a = sigma_[0];
+            // printf("sigma: ");
+            // for (int i = 0; i < N+M; ++i) printf("%d ", sigma[i]);
+            // printf("\n");
+            seed_a = sigma[0];
         } else {
             ECmul_single(std::ref(group), Kb, Kb, std::ref(omega_b), N, thread_num);
             sigma = random_permutation(seed_b, N+M);
-            sigma_ = random_permutation(sigma[0], N+M);
-            seed_b = sigma_[0];
+            // printf("sigma: ");
+            // for (int i = 0; i < N+M; ++i) printf("%d ", sigma[i]);
+            // printf("\n");
+            seed_b = sigma[0];
         }
         clock_gettime(CLOCK_MONOTONIC, &endec_mul);
         eec += (endec_mul.tv_sec - startec_mul.tv_sec);
@@ -167,14 +159,14 @@ void run_receive(EC_GROUP *group, NetIO **ios, NetIO *sa, NetIO *sb, std::string
         clock_gettime(CLOCK_MONOTONIC, &startt);
         if (party == ALICE) {
             recv_EC_vec(group, Ka, N+M, ios);
-            recv_vec(EC_recvb, N+M, ios);
+            recv_EC_vec(group, Kb, N+M, ios);
             send_pEC_vec(group, Ha, N+M, sigma.data(), ios);
-            send_pEC_vec(group, Hb, N+M, sigma_.data(), ios);
+            send_pEC_vec(group, Hb, N+M, sigma.data(), ios);
         } else {
             send_pEC_vec(group, Ka, N+M, sigma.data(), ios);
-            send_pEC_vec(group, Kb, N+M, sigma_.data(), ios);
+            send_pEC_vec(group, Kb, N+M, sigma.data(), ios);
             recv_EC_vec(group, Ha, N+M, ios);
-            recv_vec(EC_recvb, N+M, ios);
+            recv_EC_vec(group, Hb, N+M, ios);
         }
         clock_gettime(CLOCK_MONOTONIC, &endt);
         et += (endt.tv_sec - startt.tv_sec);
@@ -192,28 +184,18 @@ void run_receive(EC_GROUP *group, NetIO **ios, NetIO *sa, NetIO *sb, std::string
         clock_gettime(CLOCK_MONOTONIC, &startcmp);
         if (party == ALICE) {
             for (int i = 0; i < N+M; ++i) {
-                EC_set.insert(EC_recvb[i]);
-                unsigned char buf[65];
-                EC_POINT_point2oct(group, Ka[i], POINT_CONVERSION_UNCOMPRESSED, buf, 65, ctx);
-                memcpy(EC_recva[i]->s, buf + 1, 64); 
-            }
-            for (int i = 0; i < N+M; ++i) {
-                if (EC_set.find(EC_recva[i]) != EC_set.end()) {
+                if (!EC_POINT_cmp(group, Ka[i], Kb[i], ctx)) {
                     sa->send_data(&i, sizeof(i));
                     sa->flush();
+                    // printf("send: %d\n", i);
                 }
             }
         } else {
             for (int i = 0; i < N+M; ++i) {
-                EC_set.insert(EC_recvb[i]);
-                unsigned char buf[65];
-                EC_POINT_point2oct(group, Ha[i], POINT_CONVERSION_UNCOMPRESSED, buf, 65, ctx);
-                memcpy(EC_recva[i]->s, buf + 1, 64); 
-            }
-            for (int i = 0; i < N+M; ++i) {
-                if (EC_set.find(EC_recva[i]) != EC_set.end()) {
+                if (!EC_POINT_cmp(group, Ha[i], Hb[i], ctx)) {
                     sb->send_data(&i, sizeof(i));
                     sb->flush();
+                    // printf("send: %d\n", i);
                 }
             }
         }
