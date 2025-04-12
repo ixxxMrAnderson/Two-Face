@@ -161,6 +161,7 @@ void run_receive(EC_GROUP *group, NetIO **ios, NetIO *sa, NetIO *sb, std::string
         clock_gettime(CLOCK_MONOTONIC, &startt);
         if (party == ALICE) {
             recv_EC_vec(group, Ka, N+M, ios);
+            // recv_EC_vec(group, Kb, N+M, ios);
             recv_vec(EC_recv, N+M, ios);
             send_pEC_vec(group, Ha, N+M, sigma.data(), ios);
             send_pEC_vec(group, Hb, N+M, sigma.data(), ios);
@@ -180,7 +181,7 @@ void run_receive(EC_GROUP *group, NetIO **ios, NetIO *sa, NetIO *sb, std::string
                 ECset.insert(EC_recv[i]);
                 unsigned char buf[65];
                 buf[0] = 0x04;
-                memcpy(buf + 1,  &EC_recv[i], 64);
+                memcpy(buf + 1, EC_recv[i]->s, 64);
                 if (party == ALICE) EC_POINT_oct2point(group, Kb[i], buf, 65, ctx);
                 else EC_POINT_oct2point(group, Hb[i], buf, 65, ctx);
             }

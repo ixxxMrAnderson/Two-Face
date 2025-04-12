@@ -13,13 +13,13 @@
 #include <algorithm>
 #include <thread>
 
-#define N 524288
+#define N 52
 #define P 50
 #define logM 13
-#define M 1024
+#define M 10
 #define k 4
 int thread_num = 1;
-std::string sb_ip = "172.31.16.60";
+std::string sb_ip = "127.0.0.1";
 
 using namespace emp;
 
