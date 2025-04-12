@@ -13,12 +13,12 @@
 #include <algorithm>
 #include <thread>
 
-#define N 524228
+#define N 524288
 #define P 50
 #define logM 13
 #define M 1024
 #define k 4
-int thread_num = 1;
+int thread_num = 16;
 std::string sb_ip = "172.31.16.60";
 
 using namespace emp;
@@ -253,6 +253,18 @@ void print_BN(BIGNUM *bn) {
         buffer[bytesRead] = '\0';  // Null-terminate the string
         std::cout << "print bn: " << buffer << std::endl;
     }
+}
+
+void print_ec_point(const EC_GROUP *group, const EC_POINT *point) {
+    // Convert EC_POINT to a hex string
+    char *hex = EC_POINT_point2hex(group, point, POINT_CONVERSION_UNCOMPRESSED, NULL);
+    if (hex == NULL) {
+        printf("Failed to convert EC_POINT to hex\n");
+        return;
+    }
+
+    printf("EC Point: %s\n", hex);
+    OPENSSL_free(hex);
 }
 
 std::vector<int> random_permutation(size_t seed, int size) {

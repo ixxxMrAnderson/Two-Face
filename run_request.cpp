@@ -45,7 +45,7 @@ class Request {
 void run_request(EC_GROUP *group, NetIO *sa, NetIO *sb, std::string party_name, Request *&R, BIGNUM *sk_a, BIGNUM *sk_b, BN_CTX *ctx, PRG *prg) {
     BIGNUM *xi_a = BN_new(), *xi_b = BN_new(), *skxi_a = BN_new(), *skxi_b = BN_new();
     EC_POINT *g_a = EC_POINT_new(group), *g_b = EC_POINT_new(group), *g_skxia = EC_POINT_new(group), *g_skxib = EC_POINT_new(group), *g_xia = EC_POINT_new(group), *g_xib = EC_POINT_new(group);
-    unsigned char seed_[16];
+    unsigned char seed_[16] = {0};
     int seed_a = 0, seed_b = 0;
     if (party_name == "C") {
         random_BN(prg, xi_a);
@@ -71,7 +71,7 @@ void run_request(EC_GROUP *group, NetIO *sa, NetIO *sb, std::string party_name, 
         EC_POINT_mul(group, g_xib, NULL, g_b, xi_b, ctx);
         EC_POINT_mul(group, g_skxia, NULL, g_a, skxi_a, ctx);
         EC_POINT_mul(group, g_skxib, NULL, g_b, skxi_b, ctx);
-        prg->random_data(seed_, 16);
+        // prg->random_data(seed_, 16);
         send_EC_point(group, g_a, sa);
         send_EC_point(group, g_a, sb);
         send_EC_point(group, g_b, sa);
