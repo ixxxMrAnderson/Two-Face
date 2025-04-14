@@ -9,11 +9,39 @@ void run_receive(EC_GROUP *group, NetIO **ios, NetIO *sa, NetIO *sb, std::string
     clock_gettime(CLOCK_MONOTONIC, &start);
     BIGNUM *sk_a = R->sk_a, *sk_b = R->sk_b, *xi_a = R->xi_a, *xi_b = R->xi_b, *ORDER = BN_new();
     BN_CTX *ctx = R->ctx;
-    EC_POINT *g_a = R->g_a, *g_b = R->g_b, *g_skxia = R->g_skxia, *g_skxib = R->g_skxib, *g_xia = R->g_xia, *g_xib = R->g_xib;
+    EC_POINT *g_a = R->g_a, *g_b = R->g_b, *h_a = R->h_a, *h_b = R->h_b, *h_skxia = R->h_skxia, *h_skxib = R->h_skxib, *g_xia = R->g_xia, *g_xib = R->g_xib;
     int seed_a = R->seed_a, seed_b = R->seed_b;
     unsigned char seed_[16];
     memcpy(seed_, R->seed_, 16);
     EC_GROUP_get_order(group, ORDER, ctx);
+
+    // hash(seed_, g_a, h_a, g_b, h_b, g_xia, g_xib, h_skxia, h_skxib)
+    unsigned char *buf = (unsigned char *)malloc(16+65*8);
+    unsigned char hash[SHA256_DIGEST_LENGTH];
+    memcpy(buf, seed_, 16);
+    EC_POINT_point2oct(group, g_a, POINT_CONVERSION_UNCOMPRESSED, &buf[16], 65, ctx);
+    EC_POINT_point2oct(group, g_b, POINT_CONVERSION_UNCOMPRESSED, &buf[16+65], 65, ctx);
+    EC_POINT_point2oct(group, h_a, POINT_CONVERSION_UNCOMPRESSED, &buf[16+65*2], 65, ctx);
+    EC_POINT_point2oct(group, h_b, POINT_CONVERSION_UNCOMPRESSED, &buf[16+65*3], 65, ctx);
+    EC_POINT_point2oct(group, g_xia, POINT_CONVERSION_UNCOMPRESSED, &buf[16+65*4], 65, ctx);
+    EC_POINT_point2oct(group, g_xib, POINT_CONVERSION_UNCOMPRESSED, &buf[16+65*5], 65, ctx);
+    EC_POINT_point2oct(group, h_skxia, POINT_CONVERSION_UNCOMPRESSED, &buf[16+65*6], 65, ctx);
+    EC_POINT_point2oct(group, h_skxib, POINT_CONVERSION_UNCOMPRESSED, &buf[16+65*7], 65, ctx);
+
+    SHA256((unsigned char*)buf, sizeof(buf), hash);
+    if (party == ALICE) {
+        ios[0]->send_data(hash, 16);
+        ios[0]->send_data(&hash[16], 16);
+        ios[0]->flush();
+    } else {
+        __uint128_t tmpa, tmpb;
+        memcpy(&tmpa, hash, 16);
+        ios[0]->recv_data(&tmpb, 16);
+        if (tmpb != tmpa) printf("Sb aborts.");
+        memcpy(&tmpa, &hash[16], 16);
+        ios[0]->recv_data(&tmpb, 16);
+        if (tmpb != tmpa) printf("Sb aborts.");
+    }
 
     EC_POINT **A_ = (EC_POINT **)malloc(N * sizeof(EC_POINT *));
     EC_POINT **B_ = (EC_POINT **)malloc(N * sizeof(EC_POINT *));
@@ -44,7 +72,7 @@ void run_receive(EC_GROUP *group, NetIO **ios, NetIO *sa, NetIO *sb, std::string
             random_BN(prg_, x);
         }
     }
-    printf("R_ finished\n");
+    // printf("R_ finished\n");
 
     clock_gettime(CLOCK_MONOTONIC, &startec_mul);
     if (party == ALICE) {
@@ -67,7 +95,7 @@ void run_receive(EC_GROUP *group, NetIO **ios, NetIO *sa, NetIO *sb, std::string
             random_BN(prg_, x);
         }
     }
-    printf("gamma_ finished\n");
+    // printf("gamma_ finished\n");
 
 
     if (party == ALICE) ECmul_single(std::ref(group), gamma, gamma_A, std::ref(xi_a), M, thread_num);
@@ -85,7 +113,7 @@ void run_receive(EC_GROUP *group, NetIO **ios, NetIO *sa, NetIO *sb, std::string
     et = (endt.tv_sec - startt.tv_sec)*2;
     et += (endt.tv_nsec - startt.tv_nsec)*2/1000000000.0;
     clock_gettime(CLOCK_MONOTONIC, &startec_mul);
-    if (BatchPOE(ios, party, ALICE, group, R_, c1, A_, xi_a, skxi_a, g_a, g_xia, g_skxia, N, ctx)) printf("N: S_b aborts.\n");
+    if (BatchPOE(ios, party, ALICE, group, R_, c1, A_, xi_a, skxi_a, g_a, h_a, g_xia, h_skxia, N, ctx)) printf("N: S_b aborts.\n");
     clock_gettime(CLOCK_MONOTONIC, &endec_mul);
     eec += (endec_mul.tv_sec - startec_mul.tv_sec)*2;
     eec += (endec_mul.tv_nsec - startec_mul.tv_nsec)/1000000000.0;
@@ -106,7 +134,7 @@ void run_receive(EC_GROUP *group, NetIO **ios, NetIO *sa, NetIO *sb, std::string
     // // printf("  S_b ----B_----> S_a \n");
     if (party == ALICE) recv_EC_vec(group, B_, N, ios);
     else send_EC_vec(group, B_, N, ios);
-    if (BatchPOE(ios, party, BOB, group, R_, c1, B_, xi_b, skxi_b, g_b, g_xib, g_skxib, N, ctx)) printf("N: S_a aborts.\n");
+    if (BatchPOE(ios, party, BOB, group, R_, c1, B_, xi_b, skxi_b, g_b, h_b, g_xib, h_skxib, N, ctx)) printf("N: S_a aborts.\n");
     if (party == ALICE) recv_EC_vec(group, gamma_B, M, ios);
     else send_EC_vec(group, gamma_B, M, ios);
     if (BatchPOE(ios, party, BOB, group, gamma, gamma_B, xi_b, g_b, g_xib, M, ctx)) printf("M: S_a aborts.\n");
@@ -164,16 +192,10 @@ void run_receive(EC_GROUP *group, NetIO **ios, NetIO *sa, NetIO *sb, std::string
         if (party == ALICE) {
             ECmul_single(std::ref(group), Hb, Hb, std::ref(omega_a), N, thread_num);
             sigma = random_permutation(seed_a, N+M);
-            // printf("sigma: ");
-            // for (int i = 0; i < N+M; ++i) printf("%d ", sigma[i]);
-            // printf("\n");
             seed_a = sigma[0];
         } else {
             ECmul_single(std::ref(group), Kb, Kb, std::ref(omega_b), N, thread_num);
             sigma = random_permutation(seed_b, N+M);
-            // printf("sigma: ");
-            // for (int i = 0; i < N+M; ++i) printf("%d ", sigma[i]);
-            // printf("\n");
             seed_b = sigma[0];
         }
         clock_gettime(CLOCK_MONOTONIC, &endec_mul);
@@ -182,7 +204,6 @@ void run_receive(EC_GROUP *group, NetIO **ios, NetIO *sa, NetIO *sb, std::string
         clock_gettime(CLOCK_MONOTONIC, &startt);
         if (party == ALICE) {
             recv_EC_vec(group, Ka, N+M, ios);
-            // recv_EC_vec(group, Kb, N+M, ios);
             recv_vec(EC_recv, N+M, ios);
             send_pEC_vec(group, Ha, N+M, sigma.data(), ios);
             send_pEC_vec(group, Hb, N+M, sigma.data(), ios);
@@ -227,7 +248,6 @@ void run_receive(EC_GROUP *group, NetIO **ios, NetIO *sa, NetIO *sb, std::string
                 if (!EC_POINT_cmp(group, Ka[i], Kb[i], ctx)) {
                     sa->send_data(&i, sizeof(i));
                     sa->flush();
-                    // printf("send: %d\n", i);
                 }
             }
         } else {
@@ -235,7 +255,6 @@ void run_receive(EC_GROUP *group, NetIO **ios, NetIO *sa, NetIO *sb, std::string
                 if (!EC_POINT_cmp(group, Ha[i], Hb[i], ctx)) {
                     sb->send_data(&i, sizeof(i));
                     sb->flush();
-                    // printf("send: %d\n", i);
                 }
             }
         }
@@ -250,6 +269,7 @@ void run_receive(EC_GROUP *group, NetIO **ios, NetIO *sa, NetIO *sb, std::string
     printf("Trans time: %.6f seconds\n", et); 
     printf("Cmp time: %.6f seconds\n", ecmp); 
     printf("Other time: %.6f seconds\n", elapsed-eec-et-ecmp); 
+    printf("Total time: %.6f seconds\n", elapsed); 
 
     BN_free(ORDER);
     BN_free(xi_inv_a);

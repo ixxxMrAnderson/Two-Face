@@ -7,6 +7,7 @@
 #include "emp-tool/io/net_io_channel.h"
 #include <openssl/ec.h>
 #include <openssl/evp.h>
+#include <openssl/sha.h>
 #include <openssl/bn.h>
 #include <openssl/rand.h>
 #include <set>
@@ -15,11 +16,13 @@
 
 #define N 524288
 #define P 50
+int thread_num = 1;
+std::string sa_ip = "127.0.0.1";
+std::string sb_ip = "127.0.0.1";
+
 #define logM 13
 #define M 1024
 #define k 4
-int thread_num = 16;
-std::string sb_ip = "172.31.16.60";
 
 using namespace emp;
 
@@ -91,11 +94,11 @@ void ECadd_vector(const EC_GROUP* group, EC_POINT* A[], EC_POINT* B, size_t leng
 void setup_netio(std::string party, NetIO **ss, NetIO *&sa, NetIO *&sb, int port) {
     // printf("in setup\n");
     if (party == "Sa") {
-        sa = new NetIO(sb_ip.c_str(), port + thread_num, true);
+        sa = new NetIO(nullptr, port + thread_num, true);
     } else if (party == "Sb") {
         sb = new NetIO(nullptr, port + thread_num + 1, true);
     } else {
-        sa = new NetIO(nullptr, port + thread_num, true);
+        sa = new NetIO(sa_ip.c_str(), port + thread_num, true);
         sb = new NetIO(sb_ip.c_str(), port + thread_num + 1, true);
     }
     for (int i = 0; i < thread_num; ++i) {

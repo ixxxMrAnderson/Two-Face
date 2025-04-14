@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(omr CXX)
+project(twoface CXX)
 
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 11)
@@ -16,7 +16,7 @@ include_directories(/usr/local/include)
 link_directories(/opt/homebrew/Cellar/openssl@3/3.4.1/lib)
 
 # Create executable
-add_executable(omr ${SOURCES})
+add_executable(twoface ${SOURCES})
 
 # Link OpenSSL libraries
-target_link_libraries(omr ssl crypto)
+target_link_libraries(twoface ssl crypto)

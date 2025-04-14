@@ -105,7 +105,7 @@ int BatchPOE(NetIO** ios, int party, int prover, EC_GROUP *group, EC_POINT *A[],
     return result;
 }
 
-int BatchPOE(NetIO** ios, int party, int prover, EC_GROUP *group, EC_POINT *A[], EC_POINT *B[], EC_POINT *C[], BIGNUM *x, BIGNUM *y, EC_POINT *g_, EC_POINT *g_x, EC_POINT *g_y, int length, BN_CTX *ctx) {
+int BatchPOE(NetIO** ios, int party, int prover, EC_GROUP *group, EC_POINT *A[], EC_POINT *B[], EC_POINT *C[], BIGNUM *x, BIGNUM *y, EC_POINT *g_, EC_POINT *h_, EC_POINT *g_x, EC_POINT *h_y, int length, BN_CTX *ctx) {
     unsigned char seed_bytes[16];
     BIGNUM *ORDER = BN_new();
     EC_GROUP_get_order(group, ORDER, ctx);
@@ -175,17 +175,17 @@ int BatchPOE(NetIO** ios, int party, int prover, EC_GROUP *group, EC_POINT *A[],
             EC_POINT_free(tmp_B);
             EC_POINT_free(tmp_C);
         } else {
-            // EC_POINT *tmp_A = EC_POINT_new(group), *tmp_B = EC_POINT_new(group), *tmp_C = EC_POINT_new(group);
-            // EC_POINT_mul(group, tmp_A, NULL, g_, q[i], ctx);
-            // EC_POINT_mul(group, tmp_B, NULL, g_, q[i], ctx);
-            // EC_POINT_add(group, tmp_C, g_x, g_y, ctx);
-            // EC_POINT_mul(group, tmp_C, NULL, tmp_C, q[i], ctx);
-            // EC_POINT_add(group, sum_A, sum_A, tmp_A, ctx);
-            // EC_POINT_add(group, sum_B, sum_B, tmp_B, ctx);
-            // EC_POINT_add(group, sum_B, sum_C, tmp_C, ctx);
-            // EC_POINT_free(tmp_A);
-            // EC_POINT_free(tmp_B);
-            // EC_POINT_free(tmp_C);
+            EC_POINT *tmp_A = EC_POINT_new(group), *tmp_B = EC_POINT_new(group), *tmp_C = EC_POINT_new(group);
+            EC_POINT_mul(group, tmp_A, NULL, g_, q[i], ctx);
+            EC_POINT_mul(group, tmp_B, NULL, h_, q[i], ctx); 
+            EC_POINT_add(group, tmp_C, g_x, h_y, ctx);
+            EC_POINT_mul(group, tmp_C, NULL, tmp_C, q[i], ctx);
+            EC_POINT_add(group, sum_A, sum_A, tmp_A, ctx);
+            EC_POINT_add(group, sum_B, sum_B, tmp_B, ctx);
+            EC_POINT_add(group, sum_C, sum_C, tmp_C, ctx);
+            EC_POINT_free(tmp_A);
+            EC_POINT_free(tmp_B);
+            EC_POINT_free(tmp_C);
         }
     }
 
