@@ -13,6 +13,7 @@
 #include <set>
 #include <algorithm>
 #include <thread>
+#include "net.h"
 
 #define N 524288
 #define P 50
@@ -27,87 +28,52 @@ std::string sb_ip = "127.0.0.1";
 using namespace emp;
 
 
-struct ECoct {
-    __uint128_t *s;
-    ECoct() {
-        s = (__uint128_t*)malloc(4*sizeof(__uint128_t));
+enum {
+    TAG_A = 1,
+    TAG_GAMMA_A,
+    TAG_B,
+    TAG_GAMMA_B,
+    TAG_ROUND = 16  // + 4 * round + {0, 1: first sender's two vectors; 2, 3: second sender's}
+};
+
+// Orders serialized points by x-coordinate.
+struct PointBytesLess {
+    bool operator()(const unsigned char* p1, const unsigned char* p2) const {
+        return memcmp(p1, p2, 32) < 0;
     }
 };
 
-struct ECPointComparator {
-    bool operator()(const ECoct* p1, const ECoct* p2) const {
-        return (p1->s[0]<p2->s[0])||((p1->s[0]==p2->s[0])&&(p1->s[1]<p2->s[1]));
-    }
-};
-
-void ECmul(const EC_GROUP* group, EC_POINT* A[], EC_POINT* B[], const BIGNUM* x, size_t length, int thread_id) {
-    BN_CTX* ctx = BN_CTX_new();
-    for (size_t i = 0; i < length; ++i) {
-        if (i % thread_num != thread_id) continue;
-        EC_POINT_mul(group, B[i], nullptr, A[i], x, ctx);
-    }
-    BN_CTX_free(ctx);
+void ECmul_single(const EC_GROUP* group, EC_POINT* A[], EC_POINT* B[], const BIGNUM* x, size_t length) {
+    parallel_for(*g_pool, length, [=](size_t begin, size_t end) {
+        BN_CTX* ctx = BN_CTX_new();
+        for (size_t i = begin; i < end; ++i) EC_POINT_mul(group, B[i], nullptr, A[i], x, ctx);
+        BN_CTX_free(ctx);
+    });
 }
 
-void ECmul_(const EC_GROUP* group, EC_POINT* A[], EC_POINT* B[], BIGNUM* x[], size_t length, int thread_id) {
-    BN_CTX* ctx = BN_CTX_new();
-    for (size_t i = 0; i < length; ++i) {
-        if (i % thread_num != thread_id) continue;
-        EC_POINT_mul(group, B[i], nullptr, A[i], x[i], ctx);
-    }
-    BN_CTX_free(ctx);
-}
-
-void ECadd_(const EC_GROUP* group, EC_POINT* A[], EC_POINT* B, size_t length, int thread_id) {
-    BN_CTX* ctx = BN_CTX_new();
-    for (size_t i = 0; i < length; ++i) {
-        if (i % thread_num != thread_id) continue;
-        EC_POINT_add(group, B, B, A[i], ctx);
-    }
-    BN_CTX_free(ctx);
-}
-
-void ECmul_single(const EC_GROUP* group, EC_POINT* A[], EC_POINT* B[], const BIGNUM* x, size_t length, int num_threads) {
-    std::vector<std::thread> threads;
-    for (int t = 0; t < num_threads; ++t) {
-        threads.emplace_back(ECmul, group, A, B, x, length, t);
-    }
-    for (auto& th : threads) th.join();
-}
-
-void ECmul_vector(const EC_GROUP* group, EC_POINT* A[], EC_POINT* B[], BIGNUM* x[], size_t length, int num_threads) {
-    std::vector<std::thread> threads;
-    for (int t = 0; t < num_threads; ++t) {
-        threads.emplace_back(ECmul_, group, A, B, x, length, t);
-    }
-    for (auto& th : threads) th.join();
-}
-
-void ECadd_vector(const EC_GROUP* group, EC_POINT* A[], EC_POINT* B, size_t length, int num_threads) {
-    std::vector<std::thread> threads;
-    for (int t = 0; t < num_threads; ++t) {
-        threads.emplace_back(ECadd_, group, A, B, length, t);
-    }
-    for (auto& th : threads) th.join();
+void ECmul_vector(const EC_GROUP* group, EC_POINT* A[], EC_POINT* B[], BIGNUM* x[], size_t length) {
+    parallel_for(*g_pool, length, [=](size_t begin, size_t end) {
+        BN_CTX* ctx = BN_CTX_new();
+        for (size_t i = begin; i < end; ++i) EC_POINT_mul(group, B[i], nullptr, A[i], x[i], ctx);
+        BN_CTX_free(ctx);
+    });
 }
 
 void setup_netio(std::string party, NetIO **ss, NetIO *&sa, NetIO *&sb, int port) {
     // printf("in setup\n");
     if (party == "Sa") {
-        sa = new NetIO(nullptr, port + thread_num, true);
+        sa = new NetIO(nullptr, port + 1, true);
+        ss[0] = new NetIO(sb_ip.c_str(), port, true);
     } else if (party == "Sb") {
-        sb = new NetIO(nullptr, port + thread_num + 1, true);
+        sb = new NetIO(nullptr, port + 2, true);
+        ss[0] = new NetIO(nullptr, port, true);
     } else {
-        sa = new NetIO(sa_ip.c_str(), port + thread_num, true);
-        sb = new NetIO(sb_ip.c_str(), port + thread_num + 1, true);
+        sa = new NetIO(sa_ip.c_str(), port + 1, true);
+        sb = new NetIO(sb_ip.c_str(), port + 2, true);
     }
-    for (int i = 0; i < thread_num; ++i) {
-        if (party == "Sa") {
-            ss[i] = new NetIO(sb_ip.c_str(), port + i, true);
-        } else if (party == "Sb") {
-            ss[i] = new NetIO(nullptr, port + i, true);
-        }
-    }
+    if (ss[0]) set_timeout(ss[0]);
+    if (sa) set_timeout(sa);
+    if (sb) set_timeout(sb);
     printf("setup finished\n");
 }
 
@@ -122,15 +88,15 @@ void send_bn(BIGNUM *bn, NetIO* ios) {
         high = (high << 8) | bytes[i + 16];
     }
     
-    ios->send_data(&low, sizeof(__uint128_t ));
-    ios->send_data(&high, sizeof(__uint128_t ));
-    ios->flush();
+    net_send(ios, &low, sizeof(__uint128_t ));
+    net_send(ios, &high, sizeof(__uint128_t ));
+    net_flush(ios);
 }
 
 void receive_bn(BIGNUM *&bn, NetIO* ios) {
     __uint128_t low, high;
-    ios->recv_data(&low, sizeof(__uint128_t ));
-    ios->recv_data(&high, sizeof(__uint128_t ));
+    net_recv(ios, &low, sizeof(__uint128_t ));
+    net_recv(ios, &high, sizeof(__uint128_t ));
     
     unsigned char bytes[32];  
     memset(bytes, 0, 32); 
@@ -170,81 +136,40 @@ void send_EC_point(EC_GROUP *group, EC_POINT *point, NetIO *ios) {
     BN_free(y);
 }
 
-void send_pEC_vec_(EC_GROUP *group, EC_POINT *point[], int len, int *sigma, int thread_id, NetIO **ios) {
-    __uint128_t *s = (__uint128_t*)malloc(4*len/thread_num*sizeof(__uint128_t));
-    for (size_t i = 0; i < len/thread_num; ++i) {
+void point_to_bytes(const EC_GROUP *group, const EC_POINT *point, unsigned char *out, BN_CTX *ctx) {
+    unsigned char buf[65];
+    if (EC_POINT_point2oct(group, point, POINT_CONVERSION_UNCOMPRESSED, buf, 65, ctx) != 65) protocol_abort("cannot serialize point");
+    memcpy(out, buf + 1, POINT_BYTES);
+}
+
+void bytes_to_point(const EC_GROUP *group, EC_POINT *point, const unsigned char *in, BN_CTX *ctx) {
+    unsigned char buf[65];
+    buf[0] = 0x04;
+    memcpy(buf + 1, in, POINT_BYTES);
+    if (!EC_POINT_oct2point(group, point, buf, 65, ctx)) protocol_abort("peer sent a point that is not on the curve");
+}
+
+void decode_points(const EC_GROUP *group, EC_POINT *point[], const unsigned char *raw, size_t begin, size_t end) {
+    BN_CTX *ctx = BN_CTX_new();
+    for (size_t i = begin; i < end; ++i) bytes_to_point(group, point[i], raw + i * POINT_BYTES, ctx);
+    BN_CTX_free(ctx);
+}
+
+// Position i on the wire carries point[sigma[i]], or point[i] when sigma is null.
+void send_EC_vec(const EC_GROUP *group, EC_POINT *point[], size_t len, const int *sigma, uint32_t tag, NetIO *io) {
+    send_stream(io, tag, len, [=](size_t begin, size_t end, unsigned char *out) {
         BN_CTX *ctx = BN_CTX_new();
-        unsigned char buf[65];
-        EC_POINT_point2oct(group, point[sigma[i*thread_num+thread_id]], POINT_CONVERSION_UNCOMPRESSED, buf, 65, ctx);
-        memcpy(&s[4*i], buf + 1, 64); 
-    }
-    ios[thread_id]->send_data(s, 4*len/thread_num*sizeof(__uint128_t ));
-    ios[thread_id]->flush();
+        for (size_t i = begin; i < end; ++i) point_to_bytes(group, point[sigma ? sigma[i] : i], out + (i - begin) * POINT_BYTES, ctx);
+        BN_CTX_free(ctx);
+    });
 }
 
-void send_pEC_vec(EC_GROUP *group, EC_POINT *point[], int len, int *sigma, NetIO **ios) {
-    std::vector<std::thread> threads;
-    for (int t = 0; t < thread_num; ++t) {
-        threads.emplace_back(send_pEC_vec_, group, point, len, sigma, t, ios);
-    }
-    for (auto& th : threads) th.join();
-}
-
-void send_EC_vec_(EC_GROUP *group, EC_POINT *point[], int len, int thread_id, NetIO **ios) {
-    __uint128_t *s = (__uint128_t*)malloc(4*len/thread_num*sizeof(__uint128_t));
-    for (size_t i = 0; i < len/thread_num; ++i) {
-        BN_CTX *ctx = BN_CTX_new();
-        unsigned char buf[65];
-        EC_POINT_point2oct(group, point[i*thread_num+thread_id], POINT_CONVERSION_UNCOMPRESSED, buf, 65, ctx);
-        memcpy(&s[4*i], buf + 1, 64); 
-    }
-    ios[thread_id]->send_data(s, 4*len/thread_num*sizeof(__uint128_t ));
-    ios[thread_id]->flush();
-}
-
-void send_EC_vec(EC_GROUP *group, EC_POINT *point[], int len, NetIO **ios) {
-    std::vector<std::thread> threads;
-    for (int t = 0; t < thread_num; ++t) {
-        threads.emplace_back(send_EC_vec_, group, point, len, t, ios);
-    }
-    for (auto& th : threads) th.join();
-}
-
-void recv_EC_vec_(EC_GROUP *group, EC_POINT *point[], int len, int thread_id, NetIO **ios) {
-    __uint128_t *s = (__uint128_t*)malloc(4*len/thread_num*sizeof(__uint128_t));
-    ios[thread_id]->recv_data(s, 4*len/thread_num*sizeof(__uint128_t ));
-    for (size_t i = 0; i < len/thread_num; ++i) {
-        BN_CTX *ctx = BN_CTX_new();
-        unsigned char buf[65];
-        buf[0] = 0x04;
-        memcpy(buf + 1,  &s[4*i], 64);
-        EC_POINT_oct2point(group, point[i*thread_num+thread_id], buf, 65, ctx);
-    }
-}
-
-
-void recv_EC_vec(EC_GROUP *group, EC_POINT *point[], int len, NetIO **ios) {
-    std::vector<std::thread> threads;
-    for (int t = 0; t < thread_num; ++t) {
-        threads.emplace_back(recv_EC_vec_, group, point, len, t, ios);
-    }
-    for (auto& th : threads) th.join();
-}
-
-void recv_vec_(ECoct *recv[], int len, int thread_id, NetIO **ios) {
-    __uint128_t *s = (__uint128_t*)malloc(4*len/thread_num*sizeof(__uint128_t));
-    ios[thread_id]->recv_data(s, 4*len/thread_num*sizeof(__uint128_t ));
-    for (size_t i = 0; i < len/thread_num; ++i) {
-        memcpy(recv[i*thread_num+thread_id]->s,  &s[4*i], 64);
-    }
-}
-
-void recv_vec(ECoct *recv[], int len, NetIO **ios) {
-    std::vector<std::thread> threads;
-    for (int t = 0; t < thread_num; ++t) {
-        threads.emplace_back(recv_vec_, recv, len, t, ios);
-    }
-    for (auto& th : threads) th.join();
+// raw must hold len * POINT_BYTES bytes; chunks are decoded on the pool while later ones are still arriving.
+void recv_EC_vec(const EC_GROUP *group, EC_POINT *point[], size_t len, uint32_t tag, NetIO *io, unsigned char *raw) {
+    StreamReceiver rx(io, tag, len, raw);
+    std::thread reader([&rx] { rx.read_all(); });
+    rx.for_each_chunk([=](size_t begin, size_t end) { decode_points(group, point, raw, begin, end); });
+    reader.join();
 }
 
 void print_BN(BIGNUM *bn) {

@@ -96,12 +96,12 @@ void run_request(EC_GROUP *group, NetIO *sa, NetIO *sb, std::string party_name, 
         send_EC_point(group, h_skxia, sb);
         send_EC_point(group, h_skxib, sa);
         send_EC_point(group, h_skxib, sb);
-        sa->send_data(seed_, sizeof(seed_));
-        sa->send_data(&seed_a, sizeof(seed_a));
-        sa->flush();
-        sb->send_data(seed_, sizeof(seed_));
-        sb->send_data(&seed_b, sizeof(seed_b));
-        sb->flush();
+        net_send(sa, seed_, sizeof(seed_));
+        net_send(sa, &seed_a, sizeof(seed_a));
+        net_flush(sa);
+        net_send(sb, seed_, sizeof(seed_));
+        net_send(sb, &seed_b, sizeof(seed_b));
+        net_flush(sb);
     } else if (party_name == "Sa") {
         receive_bn(xi_a, sa);
         receive_bn(sk_a, sa);
@@ -113,8 +113,8 @@ void run_request(EC_GROUP *group, NetIO *sa, NetIO *sb, std::string party_name, 
         receive_EC_point(group, g_xib, sa);
         receive_EC_point(group, h_skxia, sa);
         receive_EC_point(group, h_skxib, sa);
-        sa->recv_data(seed_, sizeof(seed_));
-        sa->recv_data(&seed_a, sizeof(seed_a));
+        net_recv(sa, seed_, sizeof(seed_));
+        net_recv(sa, &seed_a, sizeof(seed_a));
     } else {
         receive_bn(xi_b, sb);
         receive_bn(sk_b, sb);
@@ -126,8 +126,8 @@ void run_request(EC_GROUP *group, NetIO *sa, NetIO *sb, std::string party_name, 
         receive_EC_point(group, g_xib, sb);
         receive_EC_point(group, h_skxia, sb);
         receive_EC_point(group, h_skxib, sb);
-        sb->recv_data(seed_, sizeof(seed_));
-        sb->recv_data(&seed_b, sizeof(seed_b));
+        net_recv(sb, seed_, sizeof(seed_));
+        net_recv(sb, &seed_b, sizeof(seed_b));
     }
 
     R = new Request(sk_a, sk_b, xi_a, xi_b, g_a, g_b,h_a, h_b, h_skxia, h_skxib, g_xia, g_xib, ctx, prg, seed_, seed_a, seed_b);

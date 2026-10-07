@@ -8,10 +8,10 @@ void run_reconstruct(NetIO *sa, NetIO *sb, int seed_a, int seed_b) {
     int tmp;
     for (int j = 0; j < k; ++j){
         for (int i = 0; i < P+M; ++i) {
-            sa->recv_data(&tmp, sizeof(tmp));
+            net_recv(sa, &tmp, sizeof(tmp));
             recva.push_back(tmp);
             // printf("recva: %d\n", recva.back());
-            sb->recv_data(&tmp, sizeof(tmp));
+            net_recv(sb, &tmp, sizeof(tmp));
             recvb.push_back(tmp);
             // printf("recvb: %d\n", recvb.back());
         }
@@ -31,16 +31,14 @@ void run_reconstruct(NetIO *sa, NetIO *sb, int seed_a, int seed_b) {
             }
             else if (Pm.find(sigma[recva[j*(P+M)+i]]) == Pm.end()) {
                 // printf("i=%d, j=%d, %d, %d\n", i, j, recva[j*k+i], sigma[recva[j*k+i]]);
-                printf("Client Abort.\n");
-                // return;
+                protocol_abort("the two servers reported different pertinent positions");
             }
         }
         seed_b = sigma[0];
         if (j == 0) {
             for (int i = 0; i < M; ++i) {
                 if (Pm.find(N+i) == Pm.end()) {
-                    printf("Client Abort.\n");
-                    // return;
+                    protocol_abort("a planted position is missing from the servers' reports");
                 }
             }
         }
@@ -49,8 +47,7 @@ void run_reconstruct(NetIO *sa, NetIO *sb, int seed_a, int seed_b) {
             // printf("%d ",tmp);
             if (Pm.find(sigma[recvb[j*(P+M)+i]]) == Pm.end()) {
                 // printf("i=%d, j=%d, %d, %d\n", i, j, recvb[j*k+i], sigma[recvb[j*k+i]]);
-                printf("Client Abort.\n");
-                return;
+                protocol_abort("the two servers reported different pertinent positions");
             }
         }
         seed_a = sigma[0];

@@ -14,7 +14,7 @@ int BatchPOE(NetIO** ios, int party, int prover, EC_GROUP *group, EC_POINT *A[],
         receive_EC_point(group, A_, ios[0]);
         EC_POINT_mul(group, B_, NULL, A_, x, ctx);
         send_EC_point(group, B_, ios[0]);
-        ios[0]->recv_data(seed_bytes, sizeof(seed_bytes));
+        net_recv(ios[0], seed_bytes, sizeof(seed_bytes));
     } else {
         BIGNUM *ra = BN_new();
         BN_rand(ra, 256, -1, 0);
@@ -22,8 +22,8 @@ int BatchPOE(NetIO** ios, int party, int prover, EC_GROUP *group, EC_POINT *A[],
         send_EC_point(group, A_, ios[0]);
         receive_EC_point(group, B_, ios[0]);
         RAND_bytes(seed_bytes, 16);
-        ios[0]->send_data(seed_bytes, sizeof(seed_bytes));
-        ios[0]->flush();
+        net_send(ios[0], seed_bytes, sizeof(seed_bytes));
+        net_flush(ios[0]);
         BN_free(ra);
     }
     PRG *prg = new PRG(seed_bytes);
@@ -39,10 +39,8 @@ int BatchPOE(NetIO** ios, int party, int prover, EC_GROUP *group, EC_POINT *A[],
             tmp_vecb[i] = EC_POINT_new(group);
         }
     }
-    ECmul_vector(group, A, tmp_veca, q, length, thread_num);
-    ECmul_vector(group, B, tmp_vecb, q, length, thread_num);
-    // ECadd_vector(group, tmp_veca, sum_A, length, thread_num);
-    // ECadd_vector(group, tmp_vecb, sum_B, length, thread_num);
+    ECmul_vector(group, A, tmp_veca, q, length);
+    ECmul_vector(group, B, tmp_vecb, q, length);
     for (int i = 0; i < length+2; i++) {
         if (i < length) {
             EC_POINT_add(group, sum_A, sum_A, tmp_veca[i], ctx);
@@ -124,7 +122,7 @@ int BatchPOE(NetIO** ios, int party, int prover, EC_GROUP *group, EC_POINT *A[],
         EC_POINT_mul(group, tmp, NULL, B_, y, ctx);
         EC_POINT_add(group, C_, tmp, C_, ctx);
         send_EC_point(group, C_, ios[0]);
-        ios[0]->recv_data(seed_bytes, sizeof(seed_bytes));
+        net_recv(ios[0], seed_bytes, sizeof(seed_bytes));
     } else {
         BIGNUM *ra = BN_new(), *rb = BN_new();
         BN_rand(ra, 256, -1, 0);
@@ -135,8 +133,8 @@ int BatchPOE(NetIO** ios, int party, int prover, EC_GROUP *group, EC_POINT *A[],
         send_EC_point(group, B_, ios[0]);
         receive_EC_point(group, C_, ios[0]);
         RAND_bytes(seed_bytes, 16);
-        ios[0]->send_data(seed_bytes, sizeof(seed_bytes));
-        ios[0]->flush();
+        net_send(ios[0], seed_bytes, sizeof(seed_bytes));
+        net_flush(ios[0]);
     }
     PRG *prg = new PRG(seed_bytes);
     EC_POINT **tmp_veca = (EC_POINT **)malloc(length * sizeof(EC_POINT *));
@@ -153,11 +151,9 @@ int BatchPOE(NetIO** ios, int party, int prover, EC_GROUP *group, EC_POINT *A[],
             tmp_vecc[i] = EC_POINT_new(group);
         }
     }
-    ECmul_vector(group, A, tmp_veca, q, length, thread_num);
-    ECmul_vector(group, B, tmp_vecb, q, length, thread_num);
-    ECmul_vector(group, C, tmp_vecc, q, length, thread_num);
-    // ECadd_vector(group, tmp_veca, sum_A, length, thread_num);
-    // ECadd_vector(group, tmp_vecb, sum_B, length, thread_num);
+    ECmul_vector(group, A, tmp_veca, q, length);
+    ECmul_vector(group, B, tmp_vecb, q, length);
+    ECmul_vector(group, C, tmp_vecc, q, length);
     for (int i = 0; i < length+2; i++) {
         if (i < length) {
             EC_POINT_add(group, sum_A, sum_A, tmp_veca[i], ctx);

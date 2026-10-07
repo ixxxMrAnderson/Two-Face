@@ -9,11 +9,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(SOURCES main.cpp)
 
 # Include directories
-include_directories(/opt/homebrew/Cellar/openssl@3/3.4.1/include)
+include_directories(/opt/homebrew/opt/openssl@3/include)
 include_directories(/usr/local/include)
 
 # Link directories
-link_directories(/opt/homebrew/Cellar/openssl@3/3.4.1/lib)
+link_directories(/opt/homebrew/opt/openssl@3/lib)
 
 # Create executable
 add_executable(twoface ${SOURCES})

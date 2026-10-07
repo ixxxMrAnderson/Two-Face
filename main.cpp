@@ -1,14 +1,22 @@
 #include "run_receive.cpp"
 #include "run_reconstruct.cpp"
 
-std::string party_name;
-
 int main(int argc, char* argv[]) {
     OpenSSL_add_all_algorithms();
     EC_GROUP *group = EC_GROUP_new_by_curve_name(NID_X9_62_prime256v1);
 
+    if (argc < 2) {
+        printf("usage: %s <Sa|Sb|C> [threads] [timeout_sec]\n", argv[0]);
+        return 1;
+    }
     party_name = argv[1];
-    NetIO *ios_ss[thread_num], *ios_sac, *ios_sbc;
+    if (argc > 2) thread_num = atoi(argv[2]);
+    if (thread_num < 1) thread_num = 1;
+    if (argc > 3) net_timeout_sec = atoi(argv[3]);
+    // A send to a dead peer must fail in net_send, not kill the process silently.
+    signal(SIGPIPE, SIG_IGN);
+    g_pool = new WorkerPool(thread_num);
+    NetIO *ios_ss[1] = {nullptr}, *ios_sac = nullptr, *ios_sbc = nullptr;
     setup_netio(party_name, ios_ss, ios_sac, ios_sbc, 8000);
     
 
